@@ -1,24 +1,24 @@
 # Graph Report - portfolio  (2026-11-23)
 
 ## Corpus Check
-- 130 files · ~162,867 words
+- 131 files · ~167,285 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 335 file(s) not represented in the graph (top: .glb 101, .mtl 91, .obj 91)
-- WARNING: 335 of 471 files seen (71%) have no supported extractor and are missing from this graph entirely. It may look complete while representing only part of the codebase.
+- WARNING: 335 of 472 files seen (71%) have no supported extractor and are missing from this graph entirely. It may look complete while representing only part of the codebase.
 
 ## Summary
-- 1322 nodes · 2911 edges · 55 communities (48 shown, 7 thin omitted)
-- Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 125 edges (avg confidence: 0.86)
+- 1346 nodes · 3008 edges · 56 communities (49 shown, 7 thin omitted)
+- Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 128 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `0491a93a`
+- Built from commit: `02583bd4`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - store/package.json
-- quality.ts
+- ref_three
 - shopify.ts
 - studio/app.ts
 - web/package.json
@@ -37,7 +37,7 @@
 - 4. Danh sách cảnh (bản chính ~88 giây)
 - watch/textures.ts
 - assembly/app.ts
-- index.ts
+- chair/textures.ts
 - pages/index.astro
 - PlanEditor
 - graphify.sh
@@ -45,13 +45,13 @@
 - room/app.ts
 - editor2d.ts
 - room/ai.ts
-- RoomcraftApi
+- techdraw.ts
 - studio/index.astro
 - $
 - box/studio.ts
 - setupThree
 - Architectural floor plan drawing conventions for automatic parsing (Vietnamese residential focus)
-- ScrollDirector
+- src/textures.ts
 - ProjectChapter.astro
 - room/look.ts
 - furniture.ts
@@ -63,51 +63,52 @@
 - room/textures.ts
 - detect.ts
 - watch/model.ts
-- devDependencies
+- editor2d.ts
 - watch/index.astro
-- lighting.ts
+- setupThree
 - Để hình học đếm, để Claude đọc bản vẽ
 - RenderLoop
-- scripts
+- store.ts
+- ScrollDirector
 - LICENSES.md
 - LICENSE.md
 
 ## God Nodes (most connected - your core abstractions)
 1. `startRoomcraft()` - 56 edges
 2. `PlanEditor` - 39 edges
-3. `Plan` - 35 edges
-4. `startStudio()` - 32 edges
+3. `startStudio()` - 37 edges
+4. `Plan` - 36 edges
 5. `$` - 28 edges
 6. `RenderLoop` - 27 edges
-7. `startStudio()` - 27 edges
-8. `setupThree()` - 26 edges
-9. `Vec2` - 26 edges
-10. `nodeMap()` - 21 edges
+7. `Vec2` - 27 edges
+8. `startStudio()` - 27 edges
+9. `setupThree()` - 26 edges
+10. `startAssembly()` - 21 edges
 
 ## Surprising Connections (you probably didn't know these)
+- `3D work: performance comes first` --references--> `RenderLoop`  [INFERRED]
+  CLAUDE.md → packages/three-core/src/loop.ts
+- `Layout` --references--> `RenderLoop`  [INFERRED]
+  CLAUDE.md → packages/three-core/src/loop.ts
+- `Layout` --references--> `ScrollDirector`  [INFERRED]
+  CLAUDE.md → packages/three-core/src/scroll-director.ts
 - `Layout` --references--> `analyseSheet()`  [INFERRED]
   CLAUDE.md → apps/web/src/scripts/room/ai.ts
 - `Layout` --references--> `reviewFloor()`  [INFERRED]
   CLAUDE.md → apps/web/src/scripts/room/ai.ts
-- `Layout` --references--> `RenderLoop`  [INFERRED]
-  CLAUDE.md → packages/three-core/src/loop.ts
-- `Layout` --references--> `bakeStudio()`  [INFERRED]
-  CLAUDE.md → packages/three-core/src/environment.ts
-- `3D work: performance comes first` --references--> `exposeTextureWorker()`  [INFERRED]
-  CLAUDE.md → packages/three-core/src/textures.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (55 total, 7 thin omitted)
+## Communities (56 total, 7 thin omitted)
 
 ### Community 0 - "store/package.json"
 Cohesion: 0.08
 Nodes (31): dependencies, @meridian/three-core@*, react@^18.3.1, react-dom@^18.3.1, react-router-dom@^6.30.6, @shopify/hydrogen-react@^2026.4.4, three@~0.187.0, devDependencies (+23 more)
 
-### Community 1 - "quality.ts"
-Cohesion: 0.32
-Nodes (6): detectTier(), gpuName(), PRESETS, Quality, Tier, RendererOptions
+### Community 1 - "ref_three"
+Cohesion: 0.17
+Nodes (11): createStudioEnvironment(), bakeStudio(), DARK_STUDIO, LIGHT_STUDIO, LightCard, detectTier(), gpuName(), PRESETS (+3 more)
 
 ### Community 2 - "shopify.ts"
 Cohesion: 0.06
@@ -115,11 +116,11 @@ Nodes (75): CartCtx, CartProvider(), Ctx, load(), save(), useCart(), sized(), CO
 
 ### Community 3 - "studio/app.ts"
 Cohesion: 0.07
-Nodes (41): DrawingShot, count(), emptyPlan(), SheetHost, SheetView, Stage, startStudio(), withoutMasks() (+33 more)
+Nodes (40): SheetFloor, DrawingShot, count(), emptyPlan(), SheetHost, SheetView, Stage, startStudio() (+32 more)
 
 ### Community 4 - "web/package.json"
-Cohesion: 0.12
-Nodes (22): dependencies, @anthropic-ai/sdk@^1.8.0, astro@^7.4.11, dxf-parser@^1.1.2, @fontsource/geist-mono@^5.3.0, @fontsource/instrument-serif@^5.3.0, @fontsource-variable/inter@^5.3.0, @meridian/three-core@* (+14 more)
+Cohesion: 0.07
+Nodes (36): dependencies, @anthropic-ai/sdk@^1.8.0, astro@^7.4.11, dxf-parser@^1.1.2, @fontsource/geist-mono@^5.3.0, @fontsource/instrument-serif@^5.3.0, @fontsource-variable/inter@^5.3.0, @meridian/three-core@* (+28 more)
 
 ### Community 5 - "package.json"
 Cohesion: 0.06
@@ -130,8 +131,8 @@ Cohesion: 0.06
 Nodes (34): name, runs-on, steps, concurrency, cancel-in-progress, group, environment, if (+26 more)
 
 ### Community 7 - "configurator.ts"
-Cohesion: 0.13
-Nodes (22): buildBackdrops(), ARMREST_PRICE, BASE_PRICE, ChairConfig, COLORS, FabricKey, FABRICS, FrameKey (+14 more)
+Cohesion: 0.14
+Nodes (20): ARMREST_PRICE, BASE_PRICE, ChairConfig, COLORS, FabricKey, FABRICS, FrameKey, FRAMES (+12 more)
 
 ### Community 8 - "three-core/package.json"
 Cohesion: 0.13
@@ -162,32 +163,28 @@ Cohesion: 0.33
 Nodes (5): overrides, plugins, printWidth, singleQuote, trailingComma
 
 ### Community 15 - "export.ts"
-Cohesion: 0.17
-Nodes (16): add(), CRC, crc32(), draw(), Drawing, esc(), LAYERS, opening() (+8 more)
+Cohesion: 0.19
+Nodes (15): add(), Arc, CRC, crc32(), Drawing, esc(), LAYERS, linework() (+7 more)
 
 ### Community 18 - "4. Danh sách cảnh (bản chính ~88 giây)"
 Cohesion: 0.10
 Nodes (20): 1. Tóm tắt, 2. Nơi quay, 3. Chuẩn bị trước khi quay, 4. Danh sách cảnh (bản chính ~88 giây), 5. Phong cách hình ảnh khi dựng, 6. Những điều không được làm, 7. Bản ngắn 30 giây (mạng xã hội), 8. Kiểm tra trước khi xuất clip (+12 more)
 
 ### Community 19 - "watch/textures.ts"
-Cohesion: 0.19
-Nodes (12): loadWatchTextures(), WatchTextures, brush, cotes, dial(), engrave, grain, perlage (+4 more)
+Cohesion: 0.14
+Nodes (16): KEYS, Pose, ShotKey, SHOTS, loadWatchTextures(), brush, cotes, dial() (+8 more)
 
 ### Community 20 - "assembly/app.ts"
 Cohesion: 0.06
-Nodes (57): AiContext, AiMove, AiStep, generateStep(), Place, PLACES, schema(), systemPrompt() (+49 more)
+Nodes (56): AiContext, AiMove, AiStep, generateStep(), Place, PLACES, schema(), systemPrompt() (+48 more)
 
-### Community 21 - "index.ts"
-Cohesion: 0.12
-Nodes (18): assemblySpecs(), AssemblyTexture, paintMesh(), boxSpecs(), chairSpecs(), noise(), FrameCallback, LoopOptions (+10 more)
+### Community 21 - "chair/textures.ts"
+Cohesion: 0.20
+Nodes (10): assemblySpecs(), AssemblyTexture, paintMesh(), buildBackdrops(), chairSpecs(), ChairTexture, noise(), rand32() (+2 more)
 
 ### Community 22 - "pages/index.astro"
-Cohesion: 0.17
-Nodes (8): Props, projects, services, stack, steps, UPWORK_URL, initStickyNav(), rail
-
-### Community 23 - "PlanEditor"
-Cohesion: 0.15
-Nodes (4): EditorHost, paintStair(), PlanEditor, PlanNode
+Cohesion: 0.19
+Nodes (7): Props, projects, services, stack, steps, UPWORK_URL, rail
 
 ### Community 25 - "Geometric / rule-based algorithms for parsing vector floor plans (PDF/DXF segments + text) into walls, openings and rooms"
 Cohesion: 0.05
@@ -195,51 +192,55 @@ Nodes (36): 1. Wall detection (parallel-line pairing, skeletons, hatch/stroke/la
 
 ### Community 26 - "room/app.ts"
 Cohesion: 0.10
-Nodes (35): esc(), HINTS, rovingToolbar(), startRoomcraft(), renderInspector(), structural(), customId(), roomName() (+27 more)
+Nodes (21): esc(), HINTS, rovingToolbar(), renderInspector(), structural(), Tool, RoomStyle, roomStyle() (+13 more)
 
 ### Community 27 - "editor2d.ts"
-Cohesion: 0.10
-Nodes (26): DrawingReading, OPENING_WIDTH, Tool, Arc, WallView, closestOnSegment(), DOOR_HEIGHT, Item (+18 more)
+Cohesion: 0.12
+Nodes (24): RoomcraftOptions, closestOnSegment(), nodeMap(), Plan, snapToWall(), Vec2, wallEnds(), Solid (+16 more)
 
 ### Community 28 - "room/ai.ts"
-Cohesion: 0.07
-Nodes (46): hostClaude(), HostDownloads, hostDownloads(), HostError, hostFailure(), HostSample, hostUse(), saveFile() (+38 more)
+Cohesion: 0.05
+Nodes (45): hostClaude(), HostDownloads, hostDownloads(), HostError, hostFailure(), HostSample, hostUse(), saveFile() (+37 more)
 
-### Community 29 - "RoomcraftApi"
-Cohesion: 0.11
-Nodes (8): Brain, FloorReview, RoomcraftApi, RoomcraftOptions, CustomDef, Selection, Plan, DetectResult
+### Community 29 - "techdraw.ts"
+Cohesion: 0.22
+Nodes (24): Seg, add(), arc(), axisLetter(), Chain, cluster(), dedupe(), dimChain() (+16 more)
 
 ### Community 30 - "studio/index.astro"
 Cohesion: 0.24
 Nodes (4): Props, gl, gl, hasWebGL()
 
 ### Community 31 - "$"
-Cohesion: 0.24
-Nodes (12): $, announce(), initCursor(), initRail(), liveRegion, toast(), usd(), applyMaterial() (+4 more)
+Cohesion: 0.22
+Nodes (15): $, announce(), initCursor(), initRail(), liveRegion, toast(), usd(), applyMaterial() (+7 more)
 
 ### Community 32 - "box/studio.ts"
-Cohesion: 0.11
-Nodes (18): createDieline(), rebuild(), toVec(), createPallet(), PALLET, PalletPlan, DISCOUNT, MaterialKey (+10 more)
+Cohesion: 0.10
+Nodes (17): createDieline(), rebuild(), toVec(), createPallet(), PALLET, PalletPlan, DISCOUNT, MaterialKey (+9 more)
 
 ### Community 33 - "setupThree"
-Cohesion: 0.11
-Nodes (10): setupThree(), onModelLoaded(), House, metreUVs(), openingOutline(), skirtingGeo(), createLook(), FloorOpening (+2 more)
+Cohesion: 0.14
+Nodes (7): setFixtureGlow(), House, metreUVs(), openingOutline(), skirtingGeo(), FloorOpening, wallReach()
 
 ### Community 34 - "Architectural floor plan drawing conventions for automatic parsing (Vietnamese residential focus)"
 Cohesion: 0.06
 Nodes (31): Architectural floor plan drawing conventions for automatic parsing (Vietnamese residential focus), Cited Findings, Cited Findings, Cited Findings, Cited Findings, Cited Findings, Cited Findings, Cut walls vs projection lines: line weights, hatches, structure vs masonry, wall thicknesses (+23 more)
 
-### Community 35 - "ScrollDirector"
-Cohesion: 0.20
-Nodes (7): After finishing a change: ship it to `main`, Before starting any task: build the graphify graph, Checks, Layout, Project notes for Claude, ScrollDirector, ScrollSample
+### Community 35 - "src/textures.ts"
+Cohesion: 0.18
+Nodes (12): 3D work: performance comes first, After finishing a change: ship it to `main`, Before starting any task: build the graphify graph, Checks, Layout, Project notes for Claude, canPaintInWorker(), exposeTextureWorker() (+4 more)
 
 ### Community 36 - "ProjectChapter.astro"
 Cohesion: 0.29
 Nodes (3): Props, Project, withBase()
 
+### Community 37 - "room/look.ts"
+Cohesion: 0.22
+Nodes (3): BACKDROP, createLook(), Look
+
 ### Community 38 - "furniture.ts"
-Cohesion: 0.08
-Nodes (41): FurnitureDef, Add, artwork(), Build, buildCustom(), builders, buildFurniture(), buildModel() (+33 more)
+Cohesion: 0.07
+Nodes (48): FURNITURE, FurnitureDef, CUSTOM_PARTS, CustomDef, CustomPart, MATERIALS, PartMaterial, PartShape (+40 more)
 
 ### Community 39 - "Learned floor plan understanding and floor-plan-to-model tools (state of the art, transferability, expected accuracy)"
 Cohesion: 0.06
@@ -250,8 +251,8 @@ Cohesion: 0.07
 Nodes (26): 1. Measured capabilities and failure modes of VLMs on floor plans and technical drawings, 2. Coordinate grounding techniques (Set-of-Mark, grids, IDs, tiling, image plus structured list), 3. Division of labour between the VLM and the geometry (and existing systems), 4. Prompt patterns, output formats, image budgets, cost and latency, 5. Limits, risks and geometric validation of VLM output, Cited findings, Cited findings, Cited findings (+18 more)
 
 ### Community 41 - "plan.ts"
-Cohesion: 0.11
-Nodes (28): DEFAULT_STYLE, Finish, FLOORS, FURNITURE, GROUPS, ROOM_DEFAULTS, WALLS, setFixtureGlow() (+20 more)
+Cohesion: 0.10
+Nodes (29): DEFAULT_STYLE, Finish, FLOORS, GROUPS, ROOM_DEFAULTS, WALLS, BUMP, skirtingGeos (+21 more)
 
 ### Community 42 - "BaseLayout.astro"
 Cohesion: 0.13
@@ -261,25 +262,29 @@ Nodes (3): base, canonical, Props
 Cohesion: 0.50
 Nodes (3): Develop, Duy Q. — 3D portfolio & product demos, Stack
 
+### Community 44 - "room/textures.ts"
+Cohesion: 0.22
+Nodes (3): roomSpecs(), RoomTexture, TILE_METRES
+
 ### Community 45 - "detect.ts"
-Cohesion: 0.13
-Nodes (26): centroidOf(), findRooms(), Opening, pointInPoly(), roomKey(), signedArea(), splitWall(), tidy() (+18 more)
+Cohesion: 0.15
+Nodes (27): startRoomcraft(), AUTO, BACK, designLighting(), edgeDistance(), centroidOf(), findRooms(), pointInPoly() (+19 more)
 
 ### Community 46 - "watch/model.ts"
-Cohesion: 0.10
-Nodes (29): BASE_PRICE, CaseKey, CaseOption, CASES, Config, DialKey, DialOption, DIALS (+21 more)
+Cohesion: 0.12
+Nodes (21): BASE_PRICE, CaseKey, CaseOption, CASES, DialKey, DialOption, DIALS, StrapKey (+13 more)
 
-### Community 47 - "devDependencies"
-Cohesion: 0.22
-Nodes (9): devDependencies, @astrojs/check@^0.9.12, sharp@^0.35.5, @types/three@~0.187.0, typescript@~5.9.3, @types/three, typescript, @astrojs/check (+1 more)
+### Community 47 - "editor2d.ts"
+Cohesion: 0.14
+Nodes (10): EditorHost, OPENING_WIDTH, paintStair(), Item, len(), Opening, OpeningKind, PlanNode (+2 more)
 
 ### Community 48 - "watch/index.astro"
-Cohesion: 0.29
-Nodes (5): initReveals(), chapters, configurator, gauges, initMetalButtons()
+Cohesion: 0.18
+Nodes (8): initStickyNav(), initReveals(), chapters, configurator, gauges, Config, WatchStage, initMetalButtons()
 
-### Community 49 - "lighting.ts"
-Cohesion: 0.40
-Nodes (5): AUTO, BACK, designLighting(), edgeDistance(), kelvinColor()
+### Community 49 - "setupThree"
+Cohesion: 0.31
+Nodes (4): setupThree(), onModelLoaded(), kelvinColor(), Walker
 
 ### Community 50 - "Để hình học đếm, để Claude đọc bản vẽ"
 Cohesion: 0.25
@@ -287,22 +292,22 @@ Nodes (7): Bản vẽ Việt Nam mã hóa ngữ nghĩa bằng độ dày nét ch
 
 ### Community 51 - "RenderLoop"
 Cohesion: 0.14
-Nodes (21): Hero3D(), Story(), startBoxStudio(), startChair(), Framing, NUMERIC, Pose, SECTION_OF (+13 more)
+Nodes (20): Hero3D(), Story(), startBoxStudio(), startChair(), Framing, NUMERIC, Pose, SECTION_OF (+12 more)
 
-### Community 52 - "scripts"
-Cohesion: 0.40
-Nodes (5): scripts, build, dev, preview, typecheck
+### Community 52 - "store.ts"
+Cohesion: 0.26
+Nodes (12): samplePlan(), autosave(), clearLinkHash(), compact(), fromB64(), isPlan(), loadInitial(), normalise() (+4 more)
 
 ## Knowledge Gaps
 - **1 isolated node(s):** `astro/tsconfigs/strict`
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 484 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 485 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **7 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `$` connect `$` to `box/studio.ts`, `setupThree`, `studio/app.ts`, `configurator.ts`, `watch/model.ts`, `watch/index.astro`, `RenderLoop`, `assembly/app.ts`, `pages/index.astro`, `room/app.ts`?**
-  _High betweenness centrality (0.069) - this node is a cross-community bridge._
+- **Why does `$` connect `$` to `box/studio.ts`, `studio/app.ts`, `configurator.ts`, `detect.ts`, `watch/index.astro`, `setupThree`, `RenderLoop`, `assembly/app.ts`, `pages/index.astro`, `room/app.ts`?**
+  _High betweenness centrality (0.066) - this node is a cross-community bridge._
 - **Are the 7 inferred relationships involving `startRoomcraft()` (e.g. with `.deleteSelection()` and `.draw()`) actually correct?**
   _`startRoomcraft()` has 7 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `astro/tsconfigs/strict` to the rest of the system?**

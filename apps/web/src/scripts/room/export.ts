@@ -10,15 +10,15 @@
 import { FURNITURE } from './catalog';
 import { findRooms, nodeMap, roomName, wallReach, type Opening, type Plan, type Room, type Vec2 } from './plan';
 
-type Seg = [Vec2, Vec2];
-interface Arc {
+export type Seg = [Vec2, Vec2];
+export interface Arc {
   c: Vec2;
   r: number;
   /** Start and end of the swing, as unit directions from the centre. */
   from: Vec2;
   to: Vec2;
 }
-interface Drawing {
+export interface Drawing {
   walls: Vec2[][];
   wallLines: Seg[];
   doors: Seg[];
@@ -34,7 +34,7 @@ interface Drawing {
 const add = (a: Vec2, b: Vec2, k = 1): Vec2 => [a[0] + b[0] * k, a[1] + b[1] * k];
 
 /** The plan as 2D linework, in plan metres (x right, z down). */
-function draw(p: Plan): Drawing {
+export function linework(p: Plan): Drawing {
   const nodes = nodeMap(p);
   const reach = wallReach(p, nodes);
   const degree = new Map<string, number>();
@@ -171,7 +171,7 @@ const LAYERS: [string, number][] = [
 
 /** An ASCII DXF (R12 entities) in millimetres with y up, readable by AutoCAD, LibreCAD and Floorwise itself. */
 export function planToDxf(p: Plan): string {
-  const d = draw(p);
+  const d = linework(p);
   const out: (string | number)[] = [];
   const mm = (v: number) => Math.round(v * 10000) / 10;
   const X = (q: Vec2) => mm(q[0]);
@@ -219,7 +219,7 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
 /** The plan as a standalone SVG drawing (1 unit = 1 cm), with a title line and a 1 m scale bar. */
 export function planToSvg(p: Plan, title = 'Floor plan'): string {
-  const d = draw(p);
+  const d = linework(p);
   const m = 0.8;
   const { x0, z0, x1, z1 } = Number.isFinite(d.bounds.x0) ? d.bounds : { x0: 0, z0: 0, x1: 4, z1: 3 };
   const vx = (x0 - m) * 100;

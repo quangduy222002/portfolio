@@ -41,6 +41,17 @@ import '../../styles/studio.css';
         </svg>
         <span>Read</span>
       </button>
+      <button
+        type="button"
+        id="techBtn"
+        aria-label="Technical drawings"
+        title="Check the plan as a technical drawing (axes, dimensions, levels, section) against the client's drawing before 3D"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 20h18M3 20V8M21 20V8M7 4h10M3 8h18M8 12h3M8 15h6"></path>
+        </svg>
+        <span>Sheets</span>
+      </button>
       <button type="button" id="reimportBtn" aria-label="Import" title="Import another drawing or go back to the steps">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 3v12M8 11l4 4 4-4M5 21h14"></path>
@@ -164,6 +175,49 @@ import '../../styles/studio.css';
         </form>
       </header>
       <div class="analysis" id="analysisBody"></div>
+      <div class="choices">
+        <button type="button" id="analysisTech" class="btn-ink">
+          Check the technical drawings →
+        </button>
+      </div>
+    </dialog>
+
+    <dialog id="techDlg" class="sheet tech-dlg" aria-labelledby="techTitle">
+      <header>
+        <h2 id="techTitle">Technical drawings — check before 3D</h2>
+        <form method="dialog">
+          <button aria-label="Close">✕</button>
+        </form>
+      </header>
+      <div class="tech-bar">
+        <div class="view-chips" id="techTabs" role="tablist" aria-label="Sheets"></div>
+        <label class="check">
+          <input type="checkbox" id="techUnder" checked /> Client's drawing under it
+        </label>
+        <label class="tech-op">
+          Opacity <input type="range" id="techOpacity" min="0" max="1" step="0.05" value="0.35" />
+        </label>
+        <label class="tech-op">
+          Zoom <input type="range" id="techZoom" min="1" max="4" step="0.25" value="1" />
+        </label>
+        <label class="check">
+          <input type="checkbox" id="techFurn" /> Furniture
+        </label>
+        <button type="button" id="techSvg" class="btn-line">
+          Save SVG
+        </button>
+      </div>
+      <div class="tech-view" id="techView" role="tabpanel"></div>
+      <p class="tech-note" id="techNote">
+        Red dash-dot lines are the structural axes; the three chains on each side are openings, axis to axis and
+        overall, in millimetres. Where the plan and the client's drawing disagree, fix the plan (walls, doors, floor
+        height) and look again; the 3D is built from exactly this.
+      </p>
+      <div class="choices">
+        <button type="button" id="techDone" class="btn-ink">
+          Looks right — show it in 3D
+        </button>
+      </div>
     </dialog>
 
     <dialog id="calDlg" class="sheet small" aria-labelledby="calTitle">

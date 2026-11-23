@@ -336,9 +336,9 @@
     "semantic_hash": ""
   },
   "tests/e2e/smoke.spec.ts": {
-    "mtime": 1795404256.1149943,
-    "seen": 1795404263.648847,
-    "ast_hash": "3e2b42631cf63d1bc1923ed426d3e0e6",
+    "mtime": 1795405183.6586494,
+    "seen": 1795405309.1297028,
+    "ast_hash": "934ad0151d7ab84d43f5bf19701f42f4",
     "semantic_hash": ""
   },
   "apps/store/README.md": {
@@ -624,15 +624,15 @@
     "semantic_hash": ""
   },
   "apps/web/src/pages/studio/index.astro": {
-    "mtime": 1795165986.6140509,
-    "seen": 1795166619.30884,
-    "ast_hash": "7554702022da669425b789c3bdf676c3",
+    "mtime": 1795404920.2398186,
+    "seen": 1795405309.129496,
+    "ast_hash": "5f10a36a6e01ef713a316d38d9100b41",
     "semantic_hash": ""
   },
   "apps/web/src/scripts/studio/app.ts": {
-    "mtime": 1795167904.932536,
-    "seen": 1795168375.84071,
-    "ast_hash": "45bafa32569bba68ab9f72ed6835b561",
+    "mtime": 1795404919.3538218,
+    "seen": 1795405309.1296709,
+    "ast_hash": "c9ab8a32f69873d36291c7751b693371",
     "semantic_hash": ""
   },
   "apps/web/src/scripts/studio/detect.ts": {
@@ -696,9 +696,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/scripts/room/export.ts": {
-    "mtime": 1794910814.3348923,
-    "seen": 1794911065.8895528,
-    "ast_hash": "aae76d20171614e92a3e2d307fd124f4",
+    "mtime": 1795404672.4763901,
+    "seen": 1795405309.1295218,
+    "ast_hash": "28f12cf6fa90e6f32fc8aff4f6745c60",
     "semantic_hash": ""
   },
   "apps/web/src/scripts/room/look.ts": {
@@ -813,6 +813,12 @@
     "mtime": 1795166978.578849,
     "seen": 1795167448.5390599,
     "ast_hash": "66ec6a72ac1d64c8a304f00846396ef9",
+    "semantic_hash": ""
+  },
+  "apps/web/src/scripts/room/techdraw.ts": {
+    "mtime": 1795405162.7311437,
+    "seen": 1795405309.1296651,
+    "ast_hash": "436e5599ed8503fe484bf1c82f4d3533",
     "semantic_hash": ""
   },
   "package-lock.json": {

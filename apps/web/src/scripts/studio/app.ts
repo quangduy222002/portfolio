@@ -5,7 +5,9 @@
 import { $, toast } from '../../lib/dom/chrome';
 import { startRoomcraft, type DrawingShot, type RoomcraftApi, type RoomcraftOptions } from '../room/app';
 import type { SheetFloor } from '../room/ai';
-import { findRooms, type Plan, type Room } from '../room/plan';
+import { saveFile } from '../../lib/claude-host';
+import { findRooms, storeyHeight, storeysOf, type Plan, type Room } from '../room/plan';
+import type { Underlay } from '../room/techdraw';
 import { inRegion, scaleFromDimensions, type Drawing, type Region } from './drawing';
 import { detectWalls } from './detect';
 import { alignTo, floorLabel } from './floors';
@@ -754,6 +756,113 @@ export async function startStudio(gl: boolean) {
       btn.disabled = false;
     }
   });
+
+  /* ---------- Technical drawings: the plan as an architect draws it, checked against the client's sheet ---------- */
+  let techTab = 0;
+  /** The client's drawing under floor i, placed in plan metres. */
+  const underFor = (i: number): Underlay | undefined => {
+    const b = builtFloors.get(i);
+    if (!b) return undefined;
+    const { d, r, k, dx, dz } = b;
+    const mx = (x: number) => ((x - r.x0) * k) / 1000 + dx;
+    const mz = (y: number) => ((r.y1 - y) * k) / 1000 + dz;
+    if (d.image)
+      return {
+        image: { href: d.image.url, x0: mx(d.image.x0), z0: mz(d.image.y1), x1: mx(d.image.x1), z1: mz(d.image.y0) },
+      };
+    return {
+      segs: d.segs
+        .filter((q) => inRegion(r, q.x1, q.y1) || inRegion(r, q.x2, q.y2))
+        .map((q) => [
+          [mx(q.x1), mz(q.y1)],
+          [mx(q.x2), mz(q.y2)],
+        ]),
+    };
+  };
+  let techSvg = '';
+  const renderTech = async () => {
+    const td = await import('../room/techdraw');
+    const p = api.plan();
+    const floors = storeysOf(p);
+    if (techTab > floors.length) techTab = 0;
+    $('techTabs').innerHTML = [
+      ...floors.map(
+        (f, i) =>
+          `<button type="button" class="view-chip" role="tab" data-tech="${i}" aria-pressed="${techTab === i}" aria-selected="${techTab === i}">${f.storey.name} <small>${td.levelText(f.storey.elevation)}</small></button>`,
+      ),
+      `<button type="button" class="view-chip" role="tab" data-tech="${floors.length}" aria-pressed="${techTab === floors.length}" aria-selected="${techTab === floors.length}">Section</button>`,
+    ].join('');
+    const under = techTab < floors.length ? underFor(techTab) : undefined;
+    $<HTMLInputElement>('techUnder').disabled = !under;
+    techSvg =
+      techTab < floors.length
+        ? td.floorSheet(floors[techTab]!.plan, {
+            title: `${floors[techTab]!.storey.name} plan`,
+            level: floors[techTab]!.storey.elevation,
+            height: storeyHeight(p, techTab),
+            ground: techTab === 0,
+            underlay: under,
+            furniture: $<HTMLInputElement>('techFurn').checked,
+          })
+        : td.sectionSheet(p);
+    const view = $('techView');
+    view.innerHTML = techSvg;
+    const zoom = Number($<HTMLInputElement>('techZoom').value);
+    const svg = view.querySelector('svg');
+    if (svg) svg.style.width = svg.style.height = `${zoom * 100}%`;
+    view.classList.toggle('no-under', !$<HTMLInputElement>('techUnder').checked);
+  };
+  const openTech = async (tab = floorIndex()) => {
+    if (!api.plan().walls.length && storeysOf(api.plan()).every((f) => !f.plan.walls.length))
+      return toast('Build a plan first: the drawings are made from it.');
+    techTab = tab;
+    await renderTech();
+    const dlg = $<HTMLDialogElement>('techDlg');
+    if (!dlg.open) dlg.showModal();
+  };
+  $('techBtn').addEventListener('click', () => void openTech());
+  $('analysisTech').addEventListener('click', () => {
+    $<HTMLDialogElement>('analysisDlg').close();
+    void openTech(0);
+  });
+  $('techTabs').addEventListener('click', (e) => {
+    const b = (e.target as Element).closest<HTMLElement>('[data-tech]');
+    if (!b) return;
+    techTab = Number(b.dataset.tech);
+    void renderTech();
+  });
+  $('techUnder').addEventListener('change', () =>
+    $('techView').classList.toggle('no-under', !$<HTMLInputElement>('techUnder').checked),
+  );
+  $('techOpacity').addEventListener('input', () =>
+    $('techView').style.setProperty('--under', $<HTMLInputElement>('techOpacity').value),
+  );
+  $('techFurn').addEventListener('change', () => void renderTech());
+  $('techZoom').addEventListener('input', () => {
+    const view = $('techView');
+    const svg = view.querySelector('svg');
+    if (!svg) return;
+    // Zoom about the middle of what is in view.
+    const z = Number($<HTMLInputElement>('techZoom').value);
+    const cx = (view.scrollLeft + view.clientWidth / 2) / view.scrollWidth;
+    const cy = (view.scrollTop + view.clientHeight / 2) / view.scrollHeight;
+    svg.style.width = svg.style.height = `${z * 100}%`;
+    view.scrollLeft = cx * view.scrollWidth - view.clientWidth / 2;
+    view.scrollTop = cy * view.scrollHeight - view.clientHeight / 2;
+  });
+  $('techSvg').addEventListener('click', async () => {
+    // The saved sheet is the drawing alone: the client's raster stays out of it.
+    const clean = techSvg.replace(/<image class="tech-under"[^>]*\/>|<path class="tech-under"[^>]*\/>/g, '');
+    const floors = storeysOf(api.plan());
+    const name = techTab < floors.length ? floors[techTab]!.storey.name : 'section';
+    const file = `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-technical.svg`;
+    try {
+      await saveFile(file, new Blob([clean], { type: 'image/svg+xml' }));
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Could not save the drawing.');
+    }
+  });
+  $('techDone').addEventListener('click', () => $<HTMLDialogElement>('techDlg').close());
 
   $('readBtn').addEventListener('click', async () => {
     const shot = await shoot();

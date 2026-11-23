@@ -279,7 +279,15 @@ test('room planner builds round and arched openings, a U stair and a balcony', a
   await expect(page.locator('#viewer.ready')).toBeAttached({ timeout: 60_000 });
   await page.locator('#storeys [data-act="floor"]').click();
   await page.locator('#storeys [data-storey="0"]').click();
-  await expect.poll(() => page.evaluate(() => !!localStorage.getItem('roomcraft.plan'))).toBe(true);
+  // Wait until floor 1 (with its doors and windows) is the one saved as being edited.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const p = JSON.parse(localStorage.getItem('roomcraft.plan') ?? '{}');
+        return p.storey === 0 && (p.openings ?? []).length > 3 && (p.storeys ?? []).length === 2;
+      }),
+    )
+    .toBe(true);
   await page.evaluate(() => {
     const p = JSON.parse(localStorage.getItem('roomcraft.plan')!);
     const wins = p.openings.filter((o: { kind: string }) => o.kind === 'window');
@@ -530,6 +538,48 @@ test('floor plan import reads a DXF in millimetres', async ({ page }) => {
   await page.locator('#detectBtn').click();
   await expect(page.locator('.toast')).toContainText('Found 4 walls');
   await expect(page.locator('.toast')).toContainText('1 closed room · named: Bedroom');
+  expect(errors).toEqual([]);
+});
+
+test('floor plan import draws the technical sheets to check before 3D', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('studio/');
+  await expect(page.locator('#viewer.ready')).toBeAttached({ timeout: 60_000 });
+  const rect = (x0: number, y0: number, x1: number, y1: number) =>
+    [
+      [x0, y0, x1, y0],
+      [x1, y0, x1, y1],
+      [x1, y1, x0, y1],
+      [x0, y1, x0, y0],
+    ].flatMap(([a, b, c, d]) => ['0', 'LINE', '8', 'WALL', '10', a, '20', b, '11', c, '21', d]);
+  const dxf = [
+    ...['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', '4', '0', 'ENDSEC'],
+    ...['0', 'SECTION', '2', 'ENTITIES'],
+    ...rect(0, 0, 6000, 4000),
+    ...rect(200, 200, 5800, 3800),
+    ...['0', 'ENDSEC', '0', 'EOF'],
+  ].join('\n');
+  await page
+    .locator('#file')
+    .setInputFiles({ name: 'room.dxf', mimeType: 'application/dxf', buffer: Buffer.from(dxf) });
+  await boxOnSheet(page, -50, -50, 6050, 4050);
+  await page.locator('#detectBtn').click();
+  await expect(page.locator('.toast')).toContainText('Found 4 walls');
+  await page.locator('#techBtn').click();
+  const sheet = page.locator('#techView svg');
+  await expect(sheet).toBeVisible();
+  // Grid axes 1–2 and A–B, the overall dimension (outer faces, 6 m) and the floor level.
+  await expect(sheet).toContainText('6000');
+  await expect(sheet).toContainText('±0.000');
+  await expect(sheet.locator('text', { hasText: /^A$/ }).first()).toBeAttached();
+  // The client's linework lies underneath and can be hidden.
+  await expect(page.locator('#techView .tech-under')).toBeAttached();
+  await page.locator('#techUnder').uncheck();
+  await expect(page.locator('#techView')).toHaveClass(/no-under/);
+  await page.locator('#techTabs [data-tech="1"]').click();
+  await expect(sheet).toContainText('SECTION A–A');
+  await page.locator('#techDone').click();
+  await expect(page.locator('#techDlg')).not.toBeVisible();
   expect(errors).toEqual([]);
 });
 

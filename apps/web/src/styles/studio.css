@@ -474,3 +474,49 @@
   text-align: left;
   vertical-align: top;
 }
+
+.tech-dlg {
+  width: min(1200px, 96vw);
+  max-width: none;
+}
+.tech-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 4px 0 10px;
+  font-size: 13px;
+}
+.tech-op {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tech-view {
+  height: min(68vh, 760px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+.tech-view svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.tech-view .tech-under {
+  opacity: var(--under, 0.35);
+}
+.tech-view.no-under .tech-under {
+  display: none;
+}
+.tech-note {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--mute);
+}
+.tech-bar .check {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
