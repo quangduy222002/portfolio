@@ -273,6 +273,34 @@ test('room planner sets each floor height from the section', async ({ page }) =>
   expect(errors).toEqual([]);
 });
 
+test('room planner builds round and arched openings, a U stair and a balcony', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('room/');
+  await expect(page.locator('#viewer.ready')).toBeAttached({ timeout: 60_000 });
+  await page.locator('#storeys [data-act="floor"]').click();
+  await page.locator('#storeys [data-storey="0"]').click();
+  await expect.poll(() => page.evaluate(() => !!localStorage.getItem('roomcraft.plan'))).toBe(true);
+  await page.evaluate(() => {
+    const p = JSON.parse(localStorage.getItem('roomcraft.plan')!);
+    const wins = p.openings.filter((o: { kind: string }) => o.kind === 'window');
+    const doors = p.openings.filter((o: { kind: string }) => o.kind === 'door');
+    wins[0].shape = 'round';
+    wins[1].shape = 'arch';
+    doors[0].shape = 'arch';
+    p.items.push({ id: 'su', type: 'stairsU', x: 3, z: 3, rot: 0 });
+    const up = JSON.parse(JSON.stringify({ ...p, storeys: undefined, storey: undefined }));
+    up.items = [];
+    up.walls[0].rail = true;
+    p.storeys[1].plan = up;
+    localStorage.setItem('roomcraft.plan', JSON.stringify(p));
+  });
+  await page.reload();
+  await expect(page.locator('#viewer.ready')).toBeAttached({ timeout: 60_000 });
+  await page.locator('#storeys [data-storey="1"]').click();
+  await page.waitForTimeout(1500);
+  expect(errors).toEqual([]);
+});
+
 test('room planner keeps its 3D view when a saved piece is broken', async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto('room/');

@@ -532,6 +532,16 @@ export const FURNITURE: Record<string, FurnitureDef> = {
     role: 'wood',
     opensAbove: true,
   },
+  stairsU: {
+    name: 'U-shaped stairs with a landing (dog-leg)',
+    w: 2.2,
+    d: 3.2,
+    h: 3.3,
+    colors: ['#c9a77c', '#7a5638', '#e9e3d8', '#3b3a38'],
+    group: 'Stairs',
+    role: 'wood',
+    opensAbove: true,
+  },
   column: {
     name: 'Column 220 × 220 (reinforced concrete)',
     w: 0.22,

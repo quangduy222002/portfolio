@@ -380,7 +380,14 @@ ${
       if (o)
         html = `<h2>${o.kind === 'door' ? (o.leaves === 2 ? 'Double door' : 'Door') : o.tall ? 'Glass door' : 'Window'}<small>${(o.width * 100).toFixed(0)} cm</small></h2>
 <label>Width<input type="range" data-act="width" min="0.6" max="3.6" step="0.05" value="${o.width}" /></label>
-<div class="row">${o.kind === 'door' ? `<button type="button" class="btn" data-act="flip">Flip swing</button>${o.leaves === 2 ? '' : '<button type="button" class="btn" data-act="hand">Swap hinge</button>'}<button type="button" class="btn" data-act="leaves">${o.leaves === 2 ? 'Single leaf' : 'Double leaf'}</button>` : `<button type="button" class="btn" data-act="tall">${o.tall ? 'Make it a window' : 'Make it a glass door'}</button>`}<button type="button" class="btn danger" data-act="del">Delete</button></div>`;
+<div class="row">${o.kind === 'door' ? `<button type="button" class="btn" data-act="flip">Flip swing</button>${o.leaves === 2 ? '' : '<button type="button" class="btn" data-act="hand">Swap hinge</button>'}<button type="button" class="btn" data-act="leaves">${o.leaves === 2 ? 'Single leaf' : 'Double leaf'}</button>` : `<button type="button" class="btn" data-act="tall">${o.tall ? 'Make it a window' : 'Make it a glass door'}</button>`}<button type="button" class="btn danger" data-act="del">Delete</button></div>
+<label>Shape<select data-act="shape">${[
+          ['', 'Rectangular'],
+          ['round', 'Round'],
+          ['arch', 'Arched'],
+        ]
+          .map(([v, n]) => `<option value="${v}"${(o.shape ?? '') === v ? ' selected' : ''}>${n}</option>`)
+          .join('')}</select></label>`;
     } else if (sel?.kind === 'wall') {
       const w = p.walls.find((x) => x.id === sel.id);
       if (w) {
@@ -497,6 +504,14 @@ ${
       it.type = t.value;
       inspector.dataset.for = '';
       return host.commit(`${FURNITURE[t.value]!.name}`);
+    }
+    if (t.dataset.act === 'shape') {
+      const o = plan.openings.find((x) => x.id === editor.sel?.id);
+      if (!o) return;
+      if (t.value === 'round' || t.value === 'arch') o.shape = t.value;
+      else delete o.shape;
+      inspector.dataset.for = '';
+      return host.commit(o.shape ? `${o.shape === 'round' ? 'Round' : 'Arched'} opening` : 'Rectangular opening');
     }
     if (t.dataset.act === 'width' || t.dataset.act === 'name') {
       inspector.dataset.for = '';
@@ -1183,11 +1198,13 @@ ${
                 : { kind: 'door' as const };
         // An opening already there is re-typed (a door drawn as a curved slider); else a new one is cut.
         const there = plan.openings.find((x) => x.wall === best.w.id && Math.abs(x.t - t) * best.L < width / 2 + 0.2);
+        const outline = o.shape ? { shape: o.shape } : {};
         if (there) {
           delete there.leaves;
           delete there.tall;
-          Object.assign(there, shape, { width });
-        } else plan.openings.push({ id: uid('o'), wall: best.w.id, t, width, flip: 1, ...shape });
+          delete there.shape;
+          Object.assign(there, shape, outline, { width });
+        } else plan.openings.push({ id: uid('o'), wall: best.w.id, t, width, flip: 1, ...shape, ...outline });
         openings++;
       }
       tidy(plan);

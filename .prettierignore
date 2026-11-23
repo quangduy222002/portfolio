@@ -7,3 +7,7 @@ graphify-out
 package-lock.json
 test-results
 playwright-report
+apps/web/public/models
+reports
+research_notes
+.claude

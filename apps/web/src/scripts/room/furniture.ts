@@ -564,6 +564,29 @@ const builders: Record<string, Build> = {
   stairs(add, m, w, d, h, look) {
     flight(add, m, look, { x0: -w / 2, x1: w / 2, z0: d / 2, z1: -d / 2, axis: 'z', y0: 0, y1: h, steps: 18 });
   },
+  stairsU(add, m, w, d, h, look) {
+    // Up the left half from the front to a landing across the back, then back down the right half to the front:
+    // the floor above is reached at the front, beside the foot of the stair.
+    const landing = Math.min(1.1, d / 3);
+    const mid = h / 2;
+    flight(add, m, look, {
+      x0: -w / 2,
+      x1: -0.02,
+      z0: d / 2,
+      z1: -d / 2 + landing,
+      axis: 'z',
+      y0: 0,
+      y1: mid,
+      steps: 9,
+    });
+    add(rbox(w, 0.05, landing, 0.005), m, 0, mid - 0.025, -d / 2 + landing / 2);
+    // The landing is a thin concrete slab, carried by the spine and the wall behind it.
+    add(rbox(w, 0.15, landing, 0.005), shared.white, 0, mid - 0.125, -d / 2 + landing / 2);
+    flight(add, m, look, { x0: 0.02, x1: w / 2, z0: -d / 2 + landing, z1: d / 2, axis: 'z', y0: mid, y1: h, steps: 9 });
+    // The wall between the two flights (the stair's spine), up to handrail height above the landing.
+    const spine = Math.min(h, mid + 0.9);
+    add(rbox(0.1, spine, d - landing, 0.004), shared.white, 0, spine / 2, landing / 2);
+  },
   stairsL(add, m, w, d, h, look) {
     // Up the left side to a square landing in the back-left corner, then along the back to the right.
     const run = 1.0;

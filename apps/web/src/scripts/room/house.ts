@@ -313,6 +313,13 @@ export class House {
 
       if (w.rail) {
         this.railing(g, -endA - L / 2, L / 2 + endB, w.thick);
+        // A balcony on an upper floor is a slab standing out from the facade: its edge shows under the railing.
+        if (!this.ground) {
+          const fascia = new Mesh(new BoxGeometry(L + endA + endB, SLAB + 0.08, w.thick + 0.06), this.concrete);
+          fascia.position.set((endB - endA) / 2, -(SLAB + 0.08) / 2 + 0.04, 0);
+          fascia.castShadow = fascia.receiveShadow = true;
+          g.add(fascia);
+        }
         this.walls.push(view);
         continue;
       }
@@ -347,6 +354,17 @@ export class House {
         piece(cursor, s, 0, height);
         const glassDoor = o.kind === 'window' && !!o.tall;
         const top = o.kind === 'door' || glassDoor ? DOOR_HEIGHT : WINDOW_TOP;
+        if (o.shape) {
+          // A round or arched opening: one wall panel over its width with the opening cut in it, then its frame and
+          // glass (or leaf).
+          const y0 = o.kind === 'door' || glassDoor ? 0 : WINDOW_SILL;
+          const cx = (s + e) / 2 - L / 2;
+          const hole = (inset: number) => openingOutline(o.shape!, cx, y0, Math.min(top, height - 0.05), e - s, inset);
+          this.shapedPanel(g, s - L / 2, e - L / 2, -base, height, w.thick, hole(0), front, back, reveal);
+          view.openings.push(this.shapedOpening(g, hole, w.thick, glassDoor ? 'glass' : o.kind));
+          cursor = e;
+          continue;
+        }
         if (o.kind === 'window' && !glassDoor) piece(s, e, 0, WINDOW_SILL);
         // A step up to the raised ground floor under an outside door.
         else if (base && outside) piece(s, e, -base, -0.001);
@@ -476,6 +494,65 @@ export class House {
       box(width + 0.06, 0.04, d + 0.08, this.frame, 0, WINDOW_SILL + 0.02);
       box(0.03, h, 0.05, this.frame, 0, y);
       box(width - 2 * f, h - f, 0.012, this.glass, 0, y);
+    }
+    return o;
+  }
+
+  /** A wall panel from x0 to x1 (wall-local) and y0 to y1 with a shaped opening cut through it. */
+  private shapedPanel(
+    g: Group,
+    x0: number,
+    x1: number,
+    y0: number,
+    y1: number,
+    thick: number,
+    hole: Path,
+    front: Material,
+    back: Material,
+    reveal: Material,
+  ) {
+    const outline = new Shape([new Vector2(x0, y0), new Vector2(x1, y0), new Vector2(x1, y1), new Vector2(x0, y1)]);
+    outline.holes.push(hole);
+    // Two halves, so each face takes its own side's finish; the cut surfaces take the reveal's.
+    for (const [mat, z] of [
+      [front, 0],
+      [back, -thick / 2],
+    ] as const) {
+      const mesh = new Mesh(
+        new ExtrudeGeometry(outline, { depth: thick / 2, bevelEnabled: false, curveSegments: 24 }),
+        [mat, reveal],
+      );
+      mesh.position.z = z;
+      mesh.castShadow = mesh.receiveShadow = true;
+      g.add(mesh);
+    }
+  }
+
+  /** Frame and glass (or a wooden leaf) filling a shaped opening; `hole(inset)` is its outline shrunk by inset. */
+  private shapedOpening(g: Group, hole: (inset: number) => Path, thick: number, kind: 'door' | 'window' | 'glass') {
+    const o = new Group();
+    g.add(o);
+    const ring = new Shape(hole(0).getPoints(32));
+    ring.holes.push(hole(0.05));
+    const frame = new Mesh(
+      new ExtrudeGeometry(ring, { depth: thick + 0.02, bevelEnabled: false, curveSegments: 24 }),
+      this.frame,
+    );
+    frame.position.z = -(thick + 0.02) / 2;
+    frame.castShadow = frame.receiveShadow = true;
+    o.add(frame);
+    const pane = new Shape(hole(0.05).getPoints(32));
+    if (kind === 'door') {
+      const leaf = new Mesh(
+        new ExtrudeGeometry(pane, { depth: 0.04, bevelEnabled: false, curveSegments: 24 }),
+        this.leaf,
+      );
+      leaf.position.z = -0.02;
+      leaf.castShadow = leaf.receiveShadow = true;
+      o.add(leaf);
+    } else {
+      const glass = new Mesh(new ShapeGeometry(pane, 24), this.glass);
+      o.add(glass);
     }
     return o;
   }
@@ -626,6 +703,28 @@ const BUMP: Partial<Record<RoomTexture, number>> = {
   slats: 3,
   panel: 2.5,
 };
+
+/**
+ * Outline of a shaped opening in wall-local x (centre cx, width w) and height (from y0 up to top), shrunk by inset:
+ * a circle as large as fits, or an arch (a rectangle under a semicircle as wide as the opening).
+ */
+function openingOutline(shape: 'round' | 'arch', cx: number, y0: number, top: number, w: number, inset: number) {
+  const path = new Path();
+  if (shape === 'round') {
+    const r = Math.max(0.05, Math.min(w, top - y0) / 2 - inset);
+    path.absarc(cx, (y0 + top) / 2, r, 0, Math.PI * 2, false);
+    return path;
+  }
+  const r = Math.max(0.05, w / 2 - inset);
+  const spring = Math.max(y0 + inset + 0.1, top - w / 2);
+  const bottom = y0 + inset;
+  path.moveTo(cx - r, bottom);
+  path.lineTo(cx + r, bottom);
+  path.lineTo(cx + r, spring);
+  path.absarc(cx, spring, r, 0, Math.PI, false);
+  path.lineTo(cx - r, bottom);
+  return path;
+}
 
 const SKIRTING = 0.07;
 const skirtingGeos = new Map<number, BoxGeometry>();

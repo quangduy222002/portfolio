@@ -581,6 +581,7 @@ export interface FloorReview {
     kind: 'door' | 'double' | 'sliding' | 'folding' | 'window';
     width: number;
     curved?: boolean;
+    shape?: 'round' | 'arch';
   }[];
   /** Names by room index (R1 → 0). */
   rooms: { index: number; name: string }[];
@@ -611,7 +612,7 @@ export async function reviewFloor(
   const out = await askJson<{
     dropWalls?: (string | number)[];
     addWalls?: { from?: number[]; to?: number[]; thick?: number }[];
-    openings?: { at?: number[]; kind?: string; width?: number; curved?: boolean }[];
+    openings?: { at?: number[]; kind?: string; width?: number; curved?: boolean; shape?: string }[];
     rooms?: { id?: string | number; name?: string }[];
     items?: { label?: string; type?: string; x?: number; z?: number; rot?: number | string }[];
     customs?: Record<string, unknown>;
@@ -623,7 +624,7 @@ The image (${size.w} × ${size.h} px, ${mpp} m per px) is the drawing. Drawn ove
 Check it against the drawing:
 - "dropWalls": walls that are not walls of the building (furniture, kitchen units, stair treads, dimension or hatch lines, landscape), by number.
 - "addWalls": walls (and railings of balconies) the drawing has that no red line covers: their centre line from one end to the other in image px, ending where they meet the walls they join; "thick" in metres. A curved wall: a run of short straight pieces along it.
-- "openings": every door and window that matters, at the middle of its opening in px, with "kind" "door" | "double" | "sliding" | "folding" | "window", its clear width in metres, and "curved": true for one in a curved wall (a curved sliding door).
+- "openings": every door and window that matters, at the middle of its opening in px, with "kind" "door" | "double" | "sliding" | "folding" | "window", its clear width in metres, "curved": true for one in a curved wall (a curved sliding door), and "shape": "round" or "arch" for a round window or an arched door or window (as the plan or the elevation shows it).
 - "rooms": the name of each R room as written on the drawing (Vietnamese as written, e.g. "Phòng khách", "WC", "Bếp + ăn", "Chỗ để xe", "Sân sau"), else what it clearly is.
 - "items": everything of the interior drawn on the plan: furniture, kitchen units, sanitary ware, stairs of any shape, voids (thông tầng), planters. Positions in plan metres from the image's top-left: x = px × ${mpp}, z = py × ${mpp}; rot 0/90/180/270 (front faces +z at 0, back against the wall above). Use a catalogue type when one matches its kind and size (prefer the "ph:" models for sofas, armchairs, tables, chairs, cabinets: they are real scanned pieces); otherwise model it under "customs" and use "custom:<id>" (a spiral stair, a curved WC partition, an L kitchen of the drawn length). Stairs and lifts rising to the floor above get "opensAbove": true.
 Catalogue types: ${catalogue}.
@@ -667,7 +668,15 @@ Do not repeat red walls that are right; do not invent what the drawing does not 
       const kind = kinds.find((k) => k === o.kind);
       const width = num(o.width);
       return at && kind
-        ? [{ at, kind, width: Number.isFinite(width) ? Math.min(6, Math.max(0.4, width)) : 0.8, curved: !!o.curved }]
+        ? [
+            {
+              at,
+              kind,
+              width: Number.isFinite(width) ? Math.min(6, Math.max(0.4, width)) : 0.8,
+              curved: !!o.curved,
+              ...(o.shape === 'round' || o.shape === 'arch' ? { shape: o.shape } : {}),
+            },
+          ]
         : [];
     }),
     rooms: (out.rooms ?? []).flatMap((r) => {

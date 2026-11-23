@@ -41,6 +41,8 @@ export interface Opening {
   hand?: -1;
   /** Windows: glazed from the floor to door height, a sliding glass door (onto a balcony, say). */
   tall?: boolean;
+  /** The opening's outline in the facade: a round window (oculus) or an arched door or window; square by default. */
+  shape?: 'round' | 'arch';
 }
 
 export interface Item {
@@ -657,7 +659,8 @@ export function floorOpenings(floors: { storey: Storey; plan: Plan }[], i: numbe
     .filter((f) => f.storey.elevation < here.storey.elevation)
     .sort((a, b) => b.storey.elevation - a.storey.elevation)[0];
   for (const it of below?.plan.items ?? [])
-    if (FURNITURE[it.type]?.opensAbove) out.push({ poly: itemCorners(it), open: it.type === 'stairsL' ? 1 : 0 });
+    if (FURNITURE[it.type]?.opensAbove)
+      out.push({ poly: itemCorners(it), open: it.type === 'stairsL' ? 1 : it.type === 'stairsU' ? 2 : 0 });
   return out;
 }
 
