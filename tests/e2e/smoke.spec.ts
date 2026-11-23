@@ -731,6 +731,61 @@ test('floor plan import does not build a sofa along a wall as another wall', asy
   expect(errors).toEqual([]);
 });
 
+test('floor plan import reads a U stair from its treads and a void from its label', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('studio/');
+  await expect(page.locator('#viewer.ready')).toBeAttached({ timeout: 60_000 });
+  const line = (x1: number, y1: number, x2: number, y2: number, layer = 'WALL') => [
+    '0',
+    'LINE',
+    '8',
+    layer,
+    '10',
+    x1,
+    '20',
+    y1,
+    '11',
+    x2,
+    '21',
+    y2,
+  ];
+  const rect = (x0: number, y0: number, x1: number, y1: number) => [
+    ...line(x0, y0, x1, y0),
+    ...line(x1, y0, x1, y1),
+    ...line(x1, y1, x0, y1),
+    ...line(x0, y1, x0, y0),
+  ];
+  // Two flights of nine treads side by side (a dog-leg stair), 1 m wide, 250 mm apart.
+  const treads = [1000, 2100].flatMap((x) =>
+    Array.from({ length: 9 }, (_, i) => line(x, 1500 + i * 250, x + 1000, 1500 + i * 250, 'STAIR')).flat(),
+  );
+  const dxf = [
+    ...['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', '4', '0', 'ENDSEC'],
+    ...['0', 'SECTION', '2', 'ENTITIES'],
+    ...rect(0, 0, 8000, 5000),
+    ...rect(200, 200, 7800, 4800),
+    ...treads,
+    ...['0', 'TEXT', '8', 'TEXT', '10', '5500', '20', '2500', '40', '250', '1', 'THÔNG TẦNG'],
+    ...['0', 'ENDSEC', '0', 'EOF'],
+  ].join('\n');
+  await page
+    .locator('#file')
+    .setInputFiles({ name: 'stair.dxf', mimeType: 'application/dxf', buffer: Buffer.from(dxf) });
+  await boxOnSheet(page, -50, -50, 8050, 5050);
+  await page.locator('#detectBtn').click();
+  await expect(page.locator('.toast')).toContainText('named: Void');
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (JSON.parse(localStorage.getItem('floorwise.plan') ?? '{}').items ?? []).some(
+          (it: { type: string }) => it.type === 'stairsU',
+        ),
+      ),
+    )
+    .toBe(true);
+  expect(errors).toEqual([]);
+});
+
 test('floor plan import reads door and fixture symbols', async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto('studio/');

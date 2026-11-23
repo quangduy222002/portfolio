@@ -19,6 +19,7 @@ import { SYMBOL_ROOM, type FoundSymbol } from './symbols';
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[đĐ]/g, 'd').toLowerCase();
 
 const LABELS: [RegExp, string][] = [
+  [/\b(thong tang|void|double height)\b/, 'Void'],
   [/\b(san (truoc|sau|vuon)|khong xay dung|setback|yard|garden)\b/, 'Yard'],
   [/\b(ban cong|lo ?gia|loggia|balcon(y|ies)?|terrace|san phoi)\b/, 'Balcony'],
   [/\b(wc|ve sinh|toilet|bath(room)?|(phong|p\.?) ?tam|shower)\b/, 'Bathroom'],

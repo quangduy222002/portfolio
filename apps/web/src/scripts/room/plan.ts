@@ -122,8 +122,8 @@ export const OPEN_ROOM =
 /** Ground outside the building on the lot (a front yard, the setback strip a permit leaves unbuilt): at yard level,
  * not floor area. */
 export const OUTSIDE_ROOM = /\byard\b|garden|setback|s[aâ]n (sau|tr[uư][oớ]c|v[uư][oờ]n)|kh[oô]ng x[aâ]y d[uự]ng/i;
-/** A service shaft (pipes, ducts): a void through the floors, not a room. */
-export const SHAFT_ROOM = /shaft|h[oộ]p k|\bduct\b|gen k/i;
+/** A service shaft (pipes, ducts) or a double-height void (thông tầng): open through the floor, not a room. */
+export const SHAFT_ROOM = /shaft|h[oộ]p k|\bduct\b|gen k|\bvoid\b|th[oô]ng t[aầ]ng/i;
 /** Counts in the rooms and the net floor area: not a shaft, not the yard. */
 export const isFloorArea = (name: string) => !OUTSIDE_ROOM.test(name) && !SHAFT_ROOM.test(name);
 export const DOOR_HEIGHT = 2.1;

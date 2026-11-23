@@ -336,9 +336,9 @@
     "semantic_hash": ""
   },
   "tests/e2e/smoke.spec.ts": {
-    "mtime": 1795409318.449769,
-    "seen": 1795409363.008384,
-    "ast_hash": "5ce43ae849d9d5f50e1a6fbce4c93901",
+    "mtime": 1795412758.0846336,
+    "seen": 1795412783.65801,
+    "ast_hash": "e728a07706b84998966feb12a2608d0f",
     "semantic_hash": ""
   },
   "apps/store/README.md": {
@@ -582,9 +582,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/scripts/room/plan.ts": {
-    "mtime": 1795406486.9594104,
-    "seen": 1795406959.0032609,
-    "ast_hash": "4360f6cd22594180b74363deba215931",
+    "mtime": 1795412467.3583908,
+    "seen": 1795412783.657901,
+    "ast_hash": "278a2da5ce56da07917aa7155339d476",
     "semantic_hash": ""
   },
   "apps/web/src/scripts/room/textures.ts": {
@@ -636,9 +636,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/scripts/studio/detect.ts": {
-    "mtime": 1795409318.4495492,
-    "seen": 1795409363.0082939,
-    "ast_hash": "7e1e9170fa60a305403ed0daeae4bc6a",
+    "mtime": 1795413960.6237133,
+    "seen": 1795414285.224449,
+    "ast_hash": "1a2b10184254e487b8ee9056dcf421bd",
     "semantic_hash": ""
   },
   "apps/web/src/scripts/studio/drawing.ts": {
@@ -672,9 +672,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/scripts/studio/rooms.ts": {
-    "mtime": 1795405796.105498,
-    "seen": 1795405996.520475,
-    "ast_hash": "0010fcb38a940ac7305cd07dea85a4a1",
+    "mtime": 1795412467.3579488,
+    "seen": 1795412783.6579342,
+    "ast_hash": "ee9ac8f2c4cf157a5e6a12dee72ec12e",
     "semantic_hash": ""
   },
   "apps/web/src/scripts/studio/symbols.ts": {

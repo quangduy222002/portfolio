@@ -78,7 +78,7 @@ export function detectWalls(d: Drawing, region: Region): DetectResult {
   const H: Line[] = [];
   const V: Line[] = [];
   const hatch: { x: number; y: number; L: number }[] = [];
-  const curves: { x: number; y: number; L: number }[] = [];
+  const curves: { x: number; y: number; L: number; pen?: number; pieced?: true }[] = [];
   /** Curve chords in drawing order (mm), with their pen and layer, for curved walls. */
   const chords: (Chord & { pen?: number; layer?: string })[] = [];
   const angTol = Math.tan((1.5 * Math.PI) / 180);
@@ -93,7 +93,7 @@ export function detectWalls(d: Drawing, region: Region): DetectResult {
     const dy = Math.abs(y2 - y1);
     const L = Math.hypot(dx, dy);
     if (s.curve) {
-      curves.push({ x: (x1 + x2) / 2, y: (y1 + y2) / 2, L });
+      curves.push({ x: (x1 + x2) / 2, y: (y1 + y2) / 2, L, pen: s.pen });
       chords.push({ x1, y1, x2, y2, pen: s.pen, layer: s.layer });
       continue;
     }
@@ -104,7 +104,13 @@ export function detectWalls(d: Drawing, region: Region): DetectResult {
       H.push({ c: (y1 + y2) / 2, a: Math.min(x1, x2), b: Math.max(x1, x2), layer: s.layer, pen: s.pen });
     else if (dx <= dy * angTol)
       V.push({ c: (x1 + x2) / 2, a: Math.min(y1, y2), b: Math.max(y1, y2), layer: s.layer, pen: s.pen });
-    else hatch.push({ x: (x1 + x2) / 2, y: (y1 + y2) / 2, L });
+    else {
+      hatch.push({ x: (x1 + x2) / 2, y: (y1 + y2) / 2, L });
+      // Some programs export a door's swing as a run of short straight pieces rather than a curve: such pieces count
+      // as curve too (a swing must still lie on a quarter circle about a jamb, which hatch strokes don't).
+      if (L < 150 && s.pen !== undefined)
+        curves.push({ x: (x1 + x2) / 2, y: (y1 + y2) / 2, L, pen: s.pen, pieced: true });
+    }
   }
   /*
    * The wall pen. Drawings print cut walls with the heaviest pens (TCVN 8: thick lines at least twice thin ones), and
@@ -125,6 +131,20 @@ export function detectWalls(d: Drawing, region: Region): DetectResult {
   /** Curved walls come from the heavier pens in any case (the fine ones draw door swings, furniture, fixtures). */
   const curvePen = wallPen ?? (fine > 0 ? fine * 1.4 : null);
   const heavy = (l: Line) => wallPen === null || (l.pen ?? 0) >= wallPen - 1e-6;
+  /**
+   * The pen the walls themselves are cut with (the heaviest that carries a real share of them). An arc in that pen is
+   * a curved wall (a niche, a rounded corner), not a door's swing, which plans draw finer.
+   */
+  const wallTop = (() => {
+    if (wallPen === null) return null;
+    const hp = [...penLen].filter(([p]) => p >= wallPen - 1e-6);
+    const total = hp.reduce((t, [, v]) => t + v, 0);
+    const main = hp.filter(([, v]) => v >= total * 0.25).map(([p]) => p);
+    return main.length ? Math.max(...main) : null;
+  })();
+  // Swings pieced from straight strokes count only in the finest pen (a rounded stair end or a table is drawn heavier).
+  const swingPen = (cv: { pen?: number; pieced?: true }) =>
+    cv.pieced ? fine > 0 && (cv.pen ?? 0) <= fine * 1.2 + 1e-6 : wallTop === null || (cv.pen ?? 0) < wallTop * 0.8;
   const area = Math.max(1, (region.x1 - region.x0) * (region.y1 - region.y0) * k * k);
   let hatched = hatch.reduce((s, h) => s + h.L, 0) / area > 0.0005;
   const layered = [...H, ...V].some((l) => l.layer && WALL_LAYER.test(l.layer));
@@ -356,7 +376,7 @@ export function detectWalls(d: Drawing, region: Region): DetectResult {
           const d = Math.hypot(alongOf(cv) - j, Math.abs(acrossOf(cv)) - p.t / 2);
           return Math.abs(d - rad) < rad * 0.15 + 40;
         });
-      const arcs = curves.filter((cv) => inGap(cv.x, cv.y, gap + 100) && onSwing(cv));
+      const arcs = curves.filter((cv) => swingPen(cv) && inGap(cv.x, cv.y, gap + 100) && onSwing(cv));
       // The side with the most swing is the side the door opens to; its length tells it is a door at all.
       const sideLen = (sgn: number) => arcs.filter((cv) => acrossOf(cv) * sgn > 0).reduce((s, cv) => s + cv.L, 0);
       const side = sideLen(1) >= sideLen(-1) ? 1 : -1;
@@ -372,7 +392,7 @@ export function detectWalls(d: Drawing, region: Region): DetectResult {
           for (let k = 0; k <= n; k++) {
             const j = lo + rad * k;
             const len = curves
-              .filter((cv) => inGap(cv.x, cv.y, rad + 100))
+              .filter((cv) => swingPen(cv) && inGap(cv.x, cv.y, rad + 100))
               .filter(
                 (cv) => Math.abs(Math.hypot(alongOf(cv) - j, Math.abs(acrossOf(cv)) - p.t / 2) - rad) < rad * 0.1 + 30,
               )
@@ -417,7 +437,12 @@ export function detectWalls(d: Drawing, region: Region): DetectResult {
       // A door-wide gap between two pieces of one wall with nothing drawn in it is a doorway too: permit drawings and
       // simplified plans often leave the swing out. (Gaps in the valley between doors and windows, 1.5–3 m, need
       // evidence.)
-      const plain = !door && !sliding && lines.length < 2 && !wide && gap >= 600 && gap <= 1500;
+      // A face line running on unbroken across the gap means the wall is whole there: only its other face is broken
+      // (where a curved partition or a niche meets it), so it is no doorway.
+      const faceOn = (p.o === 'H' ? H : V).some(
+        (l) => [p.c - p.t / 2, p.c + p.t / 2].some((f) => Math.abs(l.c - f) < 25) && l.a <= lo + 20 && l.b >= hi - 20,
+      );
+      const plain = !door && !sliding && lines.length < 2 && !wide && gap >= 600 && gap <= 1500 && !faceOn;
       // Otherwise only a gap with evidence becomes an opening: a swing arc (door), panels (sliding door) or glazing.
       if ((!door && !sliding && lines.length < 2 && !plain) || (wide && !gate)) {
         runs.push({ ...p, holes: [] });
@@ -654,7 +679,7 @@ export function detectWalls(d: Drawing, region: Region): DetectResult {
   const toPlanPt = (x: number, y: number) => [(x - ox) / 1000, (oy - y) / 1000] as const;
   /** Pieces of curved walls: short by design, so never taken for stubs. */
   const curved = new Set<string>();
-  for (const cw of curvedWalls(wallChords)) {
+  for (const cw of curvedWalls(wallChords, wallTop)) {
     // A curve shorter than a door leaf is a fixture's edge, not a wall.
     const span = cw.pts.slice(1).reduce((t, p, i) => t + Math.hypot(p[0] - cw.pts[i]![0], p[1] - cw.pts[i]![1]), 0);
     if (span < 400) continue;
@@ -687,7 +712,10 @@ export function detectWalls(d: Drawing, region: Region): DetectResult {
           ((p.x - n.x) * (b.x - a.x) + (p.z - n.z) * (b.z - a.z)) / (Math.hypot(p.x - n.x, p.z - n.z) * L || 1);
         return Math.abs(dot) < 0.2;
       });
-      if (off > 0.03 && !(across && off <= (w.thick ?? 0.15) / 2 + 0.03)) continue;
+      // A curved wall's end meets a wall at a slant or along it (a curved partition leaving a straight wall): joined
+      // wherever it lies within that wall's body.
+      const curvedEnd = plan.walls.some((x) => (x.a === n.id || x.b === n.id) && curved.has(x.id));
+      if (off > 0.03 && !((across || curvedEnd) && off <= (w.thick ?? 0.15) / 2 + 0.03)) continue;
       const mid = splitWall(plan, w, t);
       if (off > 0.03) {
         // Inside the wall's body but off its centre line: a short piece inside the body joins the two, so neither
@@ -708,7 +736,22 @@ export function detectWalls(d: Drawing, region: Region): DetectResult {
   // (a legend box, a north arrow, a furniture block): keep only clusters of some size or joined to the main one.
   dropStrayClusters(plan);
   // Kitchen units, counters and table edges drawn with a lighter pen than the walls, read as walls (D4).
-  dropLightPenWalls(plan, H, V, penLen, wallPen, ox, oy);
+  // Stairs: runs of treads (short parallel lines evenly spaced). Their outlines and stringers are not walls.
+  const flights = stairZones(H, V);
+  const pairs = uStairs(flights);
+  // Weak runs (three or four treads) only where they make a U with a full flight.
+  const stairs = [...flights.filter((f) => f.strong), ...pairs];
+  dropLightPenWalls(plan, H, V, penLen, wallPen, ox, oy, stairs);
+  // Two flights side by side climbing opposite ways are a U stair (a dog-leg): it stands there, rising to the floor
+  // above. A single flight may be the end of the stair from the floor below, so it is left to the drawing check.
+  for (const u of pairs) {
+    const [x0, z0] = [(u.x0 - ox) / 1000, (oy - u.y1) / 1000];
+    const [x1, z1] = [(u.x1 - ox) / 1000, (oy - u.y0) / 1000];
+    const [x, z] = [(x0 + x1) / 2, (z0 + z1) / 2];
+    if (plan.items.some((it) => /^stairs/.test(it.type) && Math.hypot(it.x - x, it.z - z) < 1.5)) continue;
+    // Flights along z (treads across x) stand at rot 0; along x, a quarter turn.
+    plan.items.push({ id: uid('i'), type: 'stairsU', x, z, rot: u.along === 'y' ? 0 : 90 });
+  }
   // A sofa or a counter along a wall, drawn in the wall pen, pairs with that wall's face into a "wall" lying flat
   // against it: no house has two walls that close.
   dropHuggingWalls(plan);
@@ -736,7 +779,8 @@ export function detectWalls(d: Drawing, region: Region): DetectResult {
       const ez = b.z - a.z;
       const L = Math.hypot(ex, ez) || 1;
       const t = Math.max(0, Math.min(1, ((x - a.x) * ex + (z - a.z) * ez) / (L * L)));
-      if (Math.hypot(a.x + ex * t - x, a.z + ez * t - z) > (w.thick ?? 0.15) / 2 + size / 2) continue;
+      // On the wall's line: a column is drawn in the wall (flush with one face at most), not beside it.
+      if (Math.hypot(a.x + ex * t - x, a.z + ez * t - z) > (w.thick ?? 0.15) / 2 + Math.min(size / 2, 0.08)) continue;
       const off = (w.thick ?? 0.15) / 2 + 0.15;
       const mx = (a.x + b.x) / 2;
       const mz = (a.z + b.z) / 2;
@@ -836,7 +880,7 @@ function nearestOn(p: Pt, line: Pt[]): { d: number; q: Pt } {
  * by side a wall's thickness apart (60–350 mm over most of their length) are the faces of one curved wall. Returns its centre
  * line, resampled into pieces short enough to follow the curve, and its thickness.
  */
-export function curvedWalls(chords: Chord[]): { pts: Pt[]; t: number }[] {
+export function curvedWalls(chords: Chord[], singlePen: number | null = null): { pts: Pt[]; t: number }[] {
   const chains: Pt[][] = [];
   /** The pen each curve is drawn with (its first piece's). */
   const penOf = new Map<Pt[], number | undefined>();
@@ -884,7 +928,9 @@ export function curvedWalls(chords: Chord[]): { pts: Pt[]; t: number }[] {
   const cand: { a: Pt[]; b: Pt[]; t: number; mid: Pt[]; same: boolean }[] = [];
   for (const a of curves)
     for (const b of curves) {
-      if (a === b || length(a) > length(b)) continue;
+      // Faces of one wall run its whole length: a short curve beside a long one (a bracket by a curved partition)
+      // is something else.
+      if (a === b || length(a) > length(b) || length(a) < length(b) * 0.5) continue;
       const ds = a.map((p) => nearestOn(p, b));
       const inBand = ds.filter((x) => x.d >= 60 && x.d <= 350);
       if (inBand.length < a.length * 0.7) continue;
@@ -903,24 +949,35 @@ export function curvedWalls(chords: Chord[]): { pts: Pt[]; t: number }[] {
   // face in a finer pen, and would otherwise pair with it), then the closest.
   cand.sort((p, q) => Number(q.same) - Number(p.same) || p.t - q.t);
   const out: { pts: Pt[]; t: number }[] = [];
+  // Resample along a centre line: pieces of about a twelfth of it, 250–700 mm.
+  const resample = (mid: Pt[]) => {
+    const L = length(mid);
+    const step = Math.max(250, Math.min(700, L / 12));
+    const pts: Pt[] = [mid[0]!];
+    let acc = 0;
+    for (let i = 1; i < mid.length; i++) {
+      acc += Math.hypot(mid[i]![0] - mid[i - 1]![0], mid[i]![1] - mid[i - 1]![1]);
+      if (acc >= step || i === mid.length - 1) {
+        pts.push(mid[i]!);
+        acc = 0;
+      }
+    }
+    return pts;
+  };
   for (const c of cand) {
     if (used.has(c.a) || used.has(c.b) || c.mid.length < 2) continue;
     used.add(c.a);
     used.add(c.b);
-    // Resample along the centre line: pieces of about a twelfth of it, 250–700 mm.
-    const L = length(c.mid);
-    const step = Math.max(250, Math.min(700, L / 12));
-    const pts: Pt[] = [c.mid[0]!];
-    let acc = 0;
-    for (let i = 1; i < c.mid.length; i++) {
-      acc += Math.hypot(c.mid[i]![0] - c.mid[i - 1]![0], c.mid[i]![1] - c.mid[i - 1]![1]);
-      if (acc >= step || i === c.mid.length - 1) {
-        pts.push(c.mid[i]!);
-        acc = 0;
-      }
-    }
-    out.push({ pts, t: c.t });
+    out.push({ pts: resample(c.mid), t: c.t });
   }
+  // A curve in the walls' own pen with no partner is a thin curved wall drawn as one heavy stroke (a curved partition,
+  // a niche): built 100 mm thick along it.
+  if (singlePen !== null)
+    for (const l of curves)
+      if (!used.has(l) && (penOf.get(l) ?? 0) >= singlePen * 0.95 && length(l) >= 800) {
+        used.add(l);
+        out.push({ pts: resample(l), t: 100 });
+      }
   return out;
 }
 
@@ -1212,6 +1269,7 @@ function dropLightPenWalls(
   wallPen: number | null,
   ox: number,
   oy: number,
+  stairs: StairZone[] = [],
 ) {
   if (wallPen === null) return;
   const heavyPens = [...penLen].filter(([p]) => p >= wallPen - 1e-6);
@@ -1253,6 +1311,37 @@ function dropLightPenWalls(
       .map((w) => w.id),
   );
   if (!light.size) return;
+  // Light walls in a stair's zone (its outline, stringers, the well's edge) go whatever they touch.
+  const inStair = (w: Wall) => {
+    const a = nodes.get(w.a)!;
+    const b = nodes.get(w.b)!;
+    const [X, Y] = [((a.x + b.x) / 2) * 1000 + ox, oy - ((a.z + b.z) / 2) * 1000];
+    return stairs.some((z) => X >= z.x0 - 500 && X <= z.x1 + 500 && Y >= z.y0 - 500 && Y <= z.y1 + 500);
+  };
+  // Never the outside walls: a stair often runs along one.
+  const xs = plan.nodes.map((n) => n.x);
+  const zs = plan.nodes.map((n) => n.z);
+  const [minX, maxX, minZ, maxZ] = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
+  const outside = (w: Wall) => {
+    const a = nodes.get(w.a)!;
+    const b = nodes.get(w.b)!;
+    const on = (v: number, e: number) => Math.abs(v - e) < 0.15;
+    return (
+      (on(a.x, minX) && on(b.x, minX)) ||
+      (on(a.x, maxX) && on(b.x, maxX)) ||
+      (on(a.z, minZ) && on(b.z, minZ)) ||
+      (on(a.z, maxZ) && on(b.z, maxZ))
+    );
+  };
+  const stairDrop = new Set(
+    plan.walls
+      .filter((w) => light.has(w.id) && inStair(w) && !outside(w) && !plan.openings.some((o) => o.wall === w.id))
+      .map((w) => w.id),
+  );
+  if (stairDrop.size) {
+    plan.walls = plan.walls.filter((w) => !stairDrop.has(w.id));
+    plan.openings = plan.openings.filter((o) => !stairDrop.has(o.wall));
+  }
   // Peel light walls that end free in the room, again and again (a counter's run, then the piece it hung from).
   const drop = new Set<string>();
   for (let changed = true; changed;) {
@@ -1387,4 +1476,91 @@ function dropHuggingWalls(plan: Plan) {
   }
   const ids = new Set(plan.walls.map((w) => w.id));
   plan.openings = plan.openings.filter((o) => ids.has(o.wall));
+}
+
+/** A run of stair treads, in drawing millimetres: its box and the direction the flight climbs along. */
+interface StairZone {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  /** 'x' when the treads are vertical lines (the flight runs along x), 'y' when horizontal. */
+  along: 'x' | 'y';
+  /** Five treads or more in a row: a flight on its own. Shorter runs count only beside one (a U stair's other half). */
+  strong: boolean;
+}
+
+/**
+ * Flights of stairs: five or more parallel lines 0.5–1.6 m long sharing their ends (the treads, as wide as the flight)
+ * and spaced 18–35 cm apart, one after another. Close pairs (a sliding door's tracks) are not treads.
+ */
+function stairZones(H: Line[], V: Line[]): StairZone[] {
+  const out: StairZone[] = [];
+  for (const [lines, along] of [
+    [H, 'y'],
+    [V, 'x'],
+  ] as const) {
+    const cand = lines.filter((l) => l.b - l.a >= 500 && l.b - l.a <= 1600);
+    const used = new Set<Line>();
+    for (const l of cand) {
+      if (used.has(l)) continue;
+      const group = cand.filter((m) => !used.has(m) && Math.abs(m.a - l.a) < 80 && Math.abs(m.b - l.b) < 80);
+      // One line per position (a tread drawn twice counts once), in order across the flight.
+      const cs = [...new Set(group.map((m) => Math.round(m.c / 40)))].map((v) => v * 40).sort((p, q) => p - q);
+      // The longest run of steady spacing.
+      let best: number[] = [];
+      let run: number[] = [cs[0]!];
+      for (let i = 1; i < cs.length; i++) {
+        const gap = cs[i]! - cs[i - 1]!;
+        if (gap >= 180 && gap <= 350) run.push(cs[i]!);
+        else {
+          if (run.length > best.length) best = run;
+          run = [cs[i]!];
+        }
+      }
+      if (run.length > best.length) best = run;
+      if (best.length < 3) continue;
+      for (const m of group) used.add(m);
+      const a = Math.min(...group.map((m) => m.a));
+      const b = Math.max(...group.map((m) => m.b));
+      const c0 = best[0]!;
+      const c1 = best[best.length - 1]!;
+      // H lines (horizontal treads): c is y, the span runs in x; the flight climbs along y.
+      const strong = best.length >= 5;
+      out.push(
+        along === 'y'
+          ? { x0: a, x1: b, y0: c0, y1: c1, along, strong }
+          : { x0: c0, x1: c1, y0: a, y1: b, along, strong },
+      );
+    }
+  }
+  return out;
+}
+
+/**
+ * U stairs: two flights of the same direction side by side (their treads end to end across the stair, at most 30 cm
+ * apart) over the same stretch. Returns the box round both.
+ */
+function uStairs(zones: StairZone[]): StairZone[] {
+  const out: StairZone[] = [];
+  for (let i = 0; i < zones.length; i++)
+    for (let j = i + 1; j < zones.length; j++) {
+      const p = zones[i]!;
+      const q = zones[j]!;
+      if (p.along !== q.along || (!p.strong && !q.strong)) continue;
+      const [pa, pb, qa, qb] = p.along === 'y' ? [p.x0, p.x1, q.x0, q.x1] : [p.y0, p.y1, q.y0, q.y1];
+      const [ps, pe, qs, qe] = p.along === 'y' ? [p.y0, p.y1, q.y0, q.y1] : [p.x0, p.x1, q.x0, q.x1];
+      const side = Math.max(qa - pb, pa - qb);
+      const overlap = Math.min(pe, qe) - Math.max(ps, qs);
+      if (side < -50 || side > 300 || overlap < Math.min(pe - ps, qe - qs) * 0.5) continue;
+      out.push({
+        x0: Math.min(p.x0, q.x0),
+        x1: Math.max(p.x1, q.x1),
+        y0: Math.min(p.y0, q.y0),
+        y1: Math.max(p.y1, q.y1),
+        along: p.along,
+        strong: true,
+      });
+    }
+  return out;
 }
