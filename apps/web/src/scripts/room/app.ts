@@ -51,6 +51,8 @@ import {
   nodeMap,
   pointInPoly,
   roomName,
+  isFloorArea,
+  itemCorners,
   roomStyle,
   samplePlan,
   setStoreyHeight,
@@ -67,7 +69,7 @@ import {
   type Room,
   type Vec2,
 } from './plan';
-import { Walker, solidsOf } from './walk';
+import { Walker, solidsOf, walkStart } from './walk';
 import { autosave, clearLinkHash, loadInitial, shareUrl, useStorageKey } from './store';
 import { roomSpecs, type RoomTexture } from './textures';
 
@@ -1570,12 +1572,16 @@ async function setupThree(
   canvas.addEventListener('pointermove', () => mode === 'walk' && (walkerMoved = true));
   /** Starts in the largest room, looking towards the middle of the home. */
   const enterWalk = () => {
-    const rooms = getRooms();
-    const big = [...rooms].sort((a, b) => b.area - a.area)[0];
-    const [x, z] = big?.centroid ?? [house.bounds.cx, house.bounds.cz];
+    const p = getPlan();
+    // Start in the largest real room (not a void, shaft or yard), clear of walls and furniture, facing its longest view.
+    const rooms = getRooms().filter((r) => isFloorArea(roomName(p, r)));
+    const obstacles = p.items
+      .filter((it) => FURNITURE[it.type] && !FURNITURE[it.type]!.mount && it.type !== 'void')
+      .map((it) => itemCorners(it));
+    const start = walkStart(rooms, solids, obstacles);
+    if (start) return walker.enter(start.x, start.z, start.yaw);
     const { cx, cz } = house.bounds;
-    const yaw = Math.atan2(-(cx - x), -(cz - z) || -1);
-    walker.enter(x, z, Number.isFinite(yaw) ? yaw : 0);
+    walker.enter(cx, cz, 0);
   };
 
   /* ---------- View modes: orbit, dollhouse cut-away, walk ---------- */

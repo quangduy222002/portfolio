@@ -69,6 +69,8 @@ export interface Item {
   auto?: boolean;
   /** The built-in piece this one stands in for while a design style shows it as another model (styles.ts). */
   base?: string;
+  /** Built mirrored left to right (a spiral stair turning the other way). */
+  mirror?: true;
 }
 
 export interface RoomStyle {
@@ -725,7 +727,7 @@ function spiralExit(it: Item): number {
   // Local angle from +z towards +x, then into plan space by the item's rotation (as itemCorners turns it).
   const local = steps * turn;
   const r = (it.rot * Math.PI) / 180;
-  const [lx, lz] = [Math.sin(local), Math.cos(local)];
+  const [lx, lz] = [(it.mirror ? -1 : 1) * Math.sin(local), Math.cos(local)];
   const [px, pz] = [lx * Math.cos(r) - lz * Math.sin(r), lx * Math.sin(r) + lz * Math.cos(r)];
   const a = Math.atan2(pz, px);
   return Math.floor(((((a / (Math.PI * 2)) % 1) + 1) % 1) * 20) % 20;

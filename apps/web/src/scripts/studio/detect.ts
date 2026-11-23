@@ -680,23 +680,27 @@ export function detectWalls(d: Drawing, region: Region): DetectResult {
   const toPlanPt = (x: number, y: number) => [(x - ox) / 1000, (oy - y) / 1000] as const;
   /** Pieces of curved walls: short by design, so never taken for stubs. */
   const curved = new Set<string>();
-  /** Single heavy curves (built-ins, not walls), as polylines in plan metres. */
-  const builtIns: [number, number][][] = [];
+  /**
+   * Single heavy curves: built as walls first, then each one that closes no real room (a labelled one, or one with a
+   * door or window) is taken out again and becomes a built-in. Their wall ids and polylines in plan metres.
+   */
+  const singles: { ids: Set<string>; pts: [number, number][] }[] = [];
   // Pairs of curves make a curved wall. A single heavy curve is not a wall: drawn in the cut pen beside a bed or in a
   // corner, it is a tall built-in (a curved wardrobe front, a display niche), built as curved panels.
   for (const cw of curvedWalls(wallChords, wallTop)) {
     // A curve shorter than a door leaf is a fixture's edge, not a wall.
     const span = cw.pts.slice(1).reduce((t, p, i) => t + Math.hypot(p[0] - cw.pts[i]![0], p[1] - cw.pts[i]![1]), 0);
     if (span < 400) continue;
-    if (cw.single) {
-      builtIns.push(cw.pts.map((p) => toPlanPt(...p) as unknown as [number, number]));
-      continue;
-    }
+    const single = cw.single
+      ? { ids: new Set<string>(), pts: cw.pts.map((p) => [...toPlanPt(...p)] as [number, number]) }
+      : null;
+    if (single) singles.push(single);
     const ids = cw.pts.map((p) => nodeAt(...toPlanPt(...p)));
     for (let i = 1; i < ids.length; i++)
       if (ids[i] !== ids[i - 1]) {
         const id = uid('w');
         curved.add(id);
+        single?.ids.add(id);
         plan.walls.push({ id, a: ids[i - 1]!.id, b: ids[i]!.id, thick: Math.round(cw.t / 10) / 100 });
       }
   }
@@ -814,6 +818,47 @@ export function detectWalls(d: Drawing, region: Region): DetectResult {
     if (c.place !== 'outside' && !grid.some((g) => Math.abs(g.x - c.x) < 0.15 || Math.abs(g.z - c.z) < 0.15)) continue;
     if (plan.items.some((it) => Math.hypot(it.x - c.x, it.z - c.z) < 0.15)) continue;
     plan.items.push({ id: uid('i'), type: c.size > 0.26 ? 'columnLarge' : 'column', x: c.x, z: c.z, rot: 0 });
+  }
+  // Single curves that close no real room: a built-in (a curved wardrobe front by a bed), not a wall.
+  const builtIns: [number, number][][] = [];
+  if (singles.length) {
+    const roomsNow = findRooms(plan);
+    const texts = d.texts.map((t) => [(t.x * k - ox) / 1000, (oy - t.y * k) / 1000] as [number, number]);
+    const nodesNow = new Map(plan.nodes.map((n) => [n.id, n]));
+    for (const sgl of singles) {
+      const mine = plan.walls.filter((w) => sgl.ids.has(w.id));
+      if (!mine.length) continue;
+      // The rooms on either side of the curve's middle piece.
+      const w = mine[Math.floor(mine.length / 2)]!;
+      const [a, b] = [nodesNow.get(w.a)!, nodesNow.get(w.b)!];
+      const L = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+      const [nx, nz] = [-(b.z - a.z) / L, (b.x - a.x) / L];
+      const sides = [1, -1].map(
+        (sg) => [(a.x + b.x) / 2 + nx * 0.15 * sg, (a.z + b.z) / 2 + nz * 0.15 * sg] as [number, number],
+      );
+      // A real room on its smaller side (a WC with its name or its door) keeps it a wall; a nameless closed corner, or
+      // a curve standing in one room, makes it a built-in.
+      const [r1, r2] = sides.map(
+        (pt) => roomsNow.filter((q) => pointInPoly(pt, q.poly)).sort((p, q) => p.area - q.area)[0],
+      );
+      const real = (() => {
+        // The building's edge (outside on one side): a curved outside wall.
+        if (!r1 || !r2) return !!(r1 || r2);
+        // Both sides in one room: it closes nothing (a curved front standing in a room).
+        if (r1.key === r2.key) return false;
+        const r = r1.area <= r2.area ? r1 : r2;
+        if (r.area < 1.5 || r.area > 40) return false;
+        const ids = new Set(r.nodes);
+        const lit = plan.openings.some((o) => {
+          const ow = plan.walls.find((x) => x.id === o.wall);
+          return !!ow && ids.has(ow.a) && ids.has(ow.b);
+        });
+        return lit || texts.some((t) => pointInPoly(t, r.poly));
+      })();
+      if (real) continue;
+      plan.walls = plan.walls.filter((x) => !sgl.ids.has(x.id));
+      builtIns.push(sgl.pts);
+    }
   }
   for (const pts of builtIns) {
     const b = curvedBuiltIn(pts);

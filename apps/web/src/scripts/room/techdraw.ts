@@ -71,7 +71,8 @@ function placer(it: Item) {
   const r = (it.rot * Math.PI) / 180;
   const c = Math.cos(r);
   const s = Math.sin(r);
-  return ([x, z]: Vec2): Vec2 => [it.x + x * c - z * s, it.z + x * s + z * c];
+  const m = it.mirror ? -1 : 1;
+  return ([x, z]: Vec2): Vec2 => [it.x + m * x * c - z * s, it.z + m * x * s + z * c];
 }
 
 /** Stair linework (outline, treads, walking line with its arrow) in plan metres. */
@@ -210,6 +211,8 @@ export function floorSheet(p: Plan, o: SheetOptions): string {
       const ca = horiz ? a.z : a.x;
       const cb = horiz ? b.z : b.x;
       if (Math.abs(ca - edge) > 0.35 || Math.abs(cb - edge) > 0.35) continue;
+      // Only straight walls along this side: the pieces of a curved wall would crowd the chain with tiny figures.
+      if (Math.abs(ca - cb) > 0.02) continue;
       const pa = horiz ? a.x : a.z;
       const pb = horiz ? b.x : b.z;
       const L = Math.hypot(b.x - a.x, b.z - a.z);
@@ -227,7 +230,11 @@ export function floorSheet(p: Plan, o: SheetOptions): string {
     const horiz = side === 'top' || side === 'bottom';
     const lo = horiz ? B.x0 : B.z0;
     const hi = horiz ? B.x1 : B.z1;
-    const detail = dedupe(wallsOn(side).filter((v) => v >= lo - 0.01 && v <= hi + 0.01));
+    // Marks closer than 12 cm (a jamb beside a column) merge, so no figure is squeezed unreadably small.
+    const detail = dedupe(
+      wallsOn(side).filter((v) => v >= lo - 0.01 && v <= hi + 0.01),
+      0.12,
+    );
     const axes = horiz ? axesX : axesZ;
     const out: Chain[] = [];
     if (detail.length > 2) out.push({ marks: detail });

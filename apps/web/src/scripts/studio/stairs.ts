@@ -15,6 +15,8 @@ export interface FoundSpiral {
   r: number;
   /** Plan angle of the first tread (radians from +z towards +x), the treads climbing towards larger angles. */
   start: number;
+  /** Climbs the other way (towards smaller angles). */
+  mirror?: boolean;
 }
 
 /** Circle through three points, or null when they are (nearly) in line. */
@@ -95,7 +97,24 @@ export function findSpiralStairs(d: Drawing, region: Region): FoundSpiral[] {
         start = i + 1 < sorted.length ? sorted[i + 1]! : sorted[0]!;
       }
     });
+    // The step numbers drawn on the treads (1, 3, 5…) tell which way it climbs and where it starts.
+    const wrap = (v: number) => Math.atan2(Math.sin(v), Math.cos(v));
+    const numbered = d.texts
+      .filter((t) => /^\s*\d{1,2}\s*$/.test(t.str) && Math.hypot(t.x - g.x, t.y - g.y) < outer)
+      .map((t) => ({ n: Number(t.str), a: Math.atan2(t.x + t.h * 0.3 - g.x, -(t.y + t.h / 2 - g.y)) }))
+      .sort((p, q) => p.n - q.n);
+    let mirror = false;
+    if (numbered.length >= 2) {
+      const [lo, next] = [numbered[0]!, numbered[1]!];
+      const dir = Math.sign(wrap(next.a - lo.a)) || 1;
+      mirror = dir < 0;
+      // The first step: the tread edge just before the lowest number, going the way the stair climbs.
+      const edges = sorted.map((a) => wrap(a - lo.a) * dir).filter((v) => v <= 0.02);
+      const back = edges.length ? Math.max(...edges) : 0;
+      start = lo.a + back * dir;
+    }
     out.push({
+      ...(mirror ? { mirror } : {}),
       x: ((g.x - region.x0) * k) / 1000,
       z: ((region.y1 - g.y) * k) / 1000,
       r: (outer * k) / 1000,
@@ -114,7 +133,7 @@ export function placeSpirals(plan: Plan, found: FoundSpiral[]): number {
     const type = sizes.sort((a, b) => Math.abs(FURNITURE[a]!.w - 2 * f.r) - Math.abs(FURNITURE[b]!.w - 2 * f.r))[0]!;
     // Tread 0 climbs from local +z; turning the piece by rot puts it at plan angle -rot.
     const rot = Math.round((((-f.start * 180) / Math.PI) % 360) + 360) % 360;
-    const it: Item = { id: uid('i'), type, x: f.x, z: f.z, rot };
+    const it: Item = { id: uid('i'), type, x: f.x, z: f.z, rot, ...(f.mirror ? { mirror: true as const } : {}) };
     plan.items.push(it);
     n++;
   }

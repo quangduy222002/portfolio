@@ -647,6 +647,7 @@ export class House {
       entry.group.visible = ok;
       if (ok) entry.group.position.set(it.x, 0, it.z);
       entry.group.rotation.y = Number.isFinite(it.rot) ? -it.rot * DEG : 0;
+      entry.group.scale.x = it.mirror ? -1 : 1;
     }
     for (const [id, e] of this.items)
       if (!seen.has(id)) {

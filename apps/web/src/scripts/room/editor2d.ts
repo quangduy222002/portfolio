@@ -714,6 +714,8 @@ export class PlanEditor {
     }
 
     // Walls as solid poché, openings cut out
+    /** Wall length labels already drawn (screen boxes): a label that would overlap one, or not fit its wall, waits. */
+    const labels: { x0: number; y0: number; x1: number; y1: number }[] = [];
     for (const w of p.walls) {
       const [a, b] = wallEnds(p, w, nodes);
       const L = len(a, b);
@@ -799,19 +801,30 @@ export class PlanEditor {
       const outward = (k: number) =>
         !roomAt(rooms, [(a[0] + b[0]) / 2 + nx * k * (t + 0.15), (a[1] + b[1]) / 2 + nz * k * (t + 0.15)]);
       const side = outward(1) ? 1 : outward(-1) ? -1 : sel ? 1 : 0;
-      if (s > 28 && side) {
+      c.font = '500 10.5px "Geist Mono", ui-monospace, monospace';
+      const text = `${L.toFixed(2)} m`;
+      const tw = c.measureText(text).width;
+      const mx = (a[0] + b[0]) / 2 + nx * side * (t + 0.3);
+      const mz = (a[1] + b[1]) / 2 + nz * side * (t + 0.3);
+      // The label's box on screen (it runs along the wall): it must fit the wall's length and not overlap another.
+      const [hx, hz] = [
+        (Math.abs(ux) * tw) / 2 + (Math.abs(uz) * 12) / 2,
+        (Math.abs(uz) * tw) / 2 + (Math.abs(ux) * 12) / 2,
+      ];
+      const box = { x0: X(mx) - hx, y0: Z(mz) - hz, x1: X(mx) + hx, y1: Z(mz) + hz };
+      const fits = L * s >= tw + 8 || sel;
+      const free = !labels.some((q) => box.x0 < q.x1 && box.x1 > q.x0 && box.y0 < q.y1 && box.y1 > q.y0);
+      if (s > 28 && side && fits && (free || sel)) {
+        labels.push(box);
         c.save();
-        const mx = (a[0] + b[0]) / 2 + nx * side * (t + 0.3);
-        const mz = (a[1] + b[1]) / 2 + nz * side * (t + 0.3);
         c.translate(X(mx), Z(mz));
         let ang = Math.atan2(uz, ux);
         if (ang > Math.PI / 2 || ang < -Math.PI / 2) ang += Math.PI;
         c.rotate(ang);
-        c.font = '500 10.5px "Geist Mono", ui-monospace, monospace';
         c.fillStyle = sel ? ACCENT : '#667085';
         c.textAlign = 'center';
         c.textBaseline = 'middle';
-        c.fillText(`${L.toFixed(2)} m`, 0, 0);
+        c.fillText(text, 0, 0);
         c.restore();
       }
     }
@@ -954,7 +967,7 @@ export class PlanEditor {
     const w = def.w * s;
     const d = def.d * s;
     if (/^stairs/.test(it.type) || it.type === 'void') {
-      paintStair(c, it.type, w, d, s, selected, def.h);
+      paintStair(c, it.type, w, d, s, selected, def.h, !!it.mirror);
       c.restore();
       return;
     }
@@ -1024,6 +1037,7 @@ function paintStair(
   s: number,
   selected: boolean,
   h = 3.3,
+  mirror = false,
 ) {
   c.strokeStyle = selected ? '#2563eb' : '#475467';
   c.fillStyle = '#ffffff';
@@ -1064,6 +1078,7 @@ function paintStair(
   const arrow: [number, number][] = [];
   if (/^stairsSpiral/.test(type)) {
     // Round: treads radiating from the central column, the walking line along the middle of the turn.
+    const m = mirror ? -1 : 1;
     const R = w / 2;
     const core = Math.max(0.08 * s, R * 0.12);
     const steps = Math.max(12, Math.round(h / 0.19));
@@ -1078,14 +1093,14 @@ function paintStair(
     c.beginPath();
     for (let i = 0; i <= steps; i++) {
       const a = i * turn;
-      c.moveTo(Math.sin(a) * core, Math.cos(a) * core);
-      c.lineTo(Math.sin(a) * R, Math.cos(a) * R);
+      c.moveTo(m * Math.sin(a) * core, Math.cos(a) * core);
+      c.lineTo(m * Math.sin(a) * R, Math.cos(a) * R);
     }
     c.stroke();
     const mid = (R + core) / 2;
     for (let i = 0; i <= 16; i++) {
       const a = 0.3 * turn + ((steps - 0.6) * turn * i) / 16;
-      arrow.push([Math.sin(a) * mid, Math.cos(a) * mid]);
+      arrow.push([m * Math.sin(a) * mid, Math.cos(a) * mid]);
     }
   } else if (type === 'stairsU') {
     const landing = Math.min(1.1 * s, d / 3);

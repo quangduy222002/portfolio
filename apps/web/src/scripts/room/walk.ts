@@ -197,3 +197,74 @@ export class Walker {
     }
   }
 }
+
+/**
+ * Where to start walking: in the largest room, at the spot farthest from its walls and furniture (not pressed against
+ * a wall, not inside a sofa), facing the longest clear view across the room. `yaw` as Walker.enter takes it.
+ */
+export function walkStart(
+  rooms: { poly: Vec2[]; area: number; centroid: Vec2; name?: string }[],
+  solids: Solid[],
+  obstacles: Vec2[][],
+): { x: number; z: number; yaw: number } | null {
+  const room = [...rooms].sort((a, b) => b.area - a.area)[0];
+  if (!room) return null;
+  const segDist = (p: Vec2, a: Vec2, b: Vec2) => {
+    const [ex, ez] = [b[0] - a[0], b[1] - a[1]];
+    const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * ex + (p[1] - a[1]) * ez) / (ex * ex + ez * ez || 1)));
+    return Math.hypot(a[0] + ex * t - p[0], a[1] + ez * t - p[1]);
+  };
+  const inside = (p: Vec2, poly: Vec2[]) => {
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, zi] = poly[i]!;
+      const [xj, zj] = poly[j]!;
+      if (zi > p[1] !== zj > p[1] && p[0] < ((xj - xi) * (p[1] - zi)) / (zj - zi) + xi) c = !c;
+    }
+    return c;
+  };
+  const clearance = (p: Vec2) => {
+    let d = Infinity;
+    for (const s of solids) d = Math.min(d, segDist(p, s.a, s.b) - s.r);
+    for (const o of obstacles) {
+      if (inside(p, o)) return -1;
+      for (let i = 0; i < o.length; i++) d = Math.min(d, segDist(p, o[i]!, o[(i + 1) % o.length]!));
+    }
+    return d;
+  };
+  const xs = room.poly.map((q) => q[0]);
+  const zs = room.poly.map((q) => q[1]);
+  let best: { p: Vec2; c: number } = { p: room.centroid, c: clearance(room.centroid) };
+  for (let x = Math.min(...xs); x <= Math.max(...xs); x += 0.25)
+    for (let z = Math.min(...zs); z <= Math.max(...zs); z += 0.25) {
+      const p: Vec2 = [x, z];
+      if (!inside(p, room.poly)) continue;
+      const c = clearance(p);
+      // Clear room round you matters most; among spots about as clear, the one nearer the room's middle.
+      const score = Math.min(c, 1.2) - Math.hypot(x - room.centroid[0], z - room.centroid[1]) * 0.05;
+      const bestScore =
+        Math.min(best.c, 1.2) - Math.hypot(best.p[0] - room.centroid[0], best.p[1] - room.centroid[1]) * 0.05;
+      if (score > bestScore) best = { p, c };
+    }
+  // Face the longest free view: the farthest a ray goes before it meets a wall.
+  const ray = (p: Vec2, dx: number, dz: number) => {
+    let near = 20;
+    for (const s of solids) {
+      const [ex, ez] = [s.b[0] - s.a[0], s.b[1] - s.a[1]];
+      const den = dx * ez - dz * ex;
+      if (Math.abs(den) < 1e-9) continue;
+      const t = ((s.a[0] - p[0]) * ez - (s.a[1] - p[1]) * ex) / den;
+      const u = ((s.a[0] - p[0]) * dz - (s.a[1] - p[1]) * dx) / den;
+      if (t > 0.05 && u >= 0 && u <= 1) near = Math.min(near, t);
+    }
+    return near;
+  };
+  let view = { d: -1, yaw: 0 };
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2;
+    const [dx, dz] = [Math.cos(a), Math.sin(a)];
+    const d = ray(best.p, dx, dz);
+    if (d > view.d) view = { d, yaw: Math.atan2(-dx, -dz) };
+  }
+  return { x: best.p[0], z: best.p[1], yaw: view.yaw };
+}
