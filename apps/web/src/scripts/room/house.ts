@@ -31,6 +31,7 @@ import { buildFurniture, setFixtureGlow } from './furniture';
 import {
   DOOR_HEIGHT,
   OPEN_ROOM,
+  openingSpan,
   OUTSIDE_ROOM,
   SHAFT_ROOM,
   PARAPET,
@@ -361,19 +362,20 @@ export class House {
       for (const { o, s, e } of ops) {
         piece(cursor, s, 0, height);
         const glassDoor = o.kind === 'window' && !!o.tall;
-        const top = o.kind === 'door' || glassDoor ? DOOR_HEIGHT : WINDOW_TOP;
+        // Sill and head: the drawing's own (a shopfront glazed to 2.8 m, a high window) or the usual ones.
+        const { sill, head: top } = openingSpan(o, height);
         if (o.shape) {
           // A round or arched opening: one wall panel over its width with the opening cut in it, then its frame and
           // glass (or leaf).
-          const y0 = o.kind === 'door' || glassDoor ? 0 : WINDOW_SILL;
+          const y0 = sill;
           const cx = (s + e) / 2 - L / 2;
-          const hole = (inset: number) => openingOutline(o.shape!, cx, y0, Math.min(top, height - 0.05), e - s, inset);
+          const hole = (inset: number) => openingOutline(o.shape!, cx, y0, top, e - s, inset);
           this.shapedPanel(g, s - L / 2, e - L / 2, -base, height, w.thick, hole(0), front, back, reveal);
           view.openings.push(this.shapedOpening(g, hole, w.thick, glassDoor ? 'glass' : o.kind));
           cursor = e;
           continue;
         }
-        if (o.kind === 'window' && !glassDoor) piece(s, e, 0, WINDOW_SILL);
+        if (sill > 0) piece(s, e, 0, sill);
         // A step up to the raised ground floor under an outside door.
         else if (base && outside) piece(s, e, -base, -0.001);
         piece(s, e, top, height);
@@ -387,6 +389,8 @@ export class House {
             o.flip ?? 1,
             o.leaves,
             o.hand,
+            sill,
+            top,
           ),
         );
         cursor = e;
@@ -435,6 +439,8 @@ export class House {
     flip: number,
     leaves = 1,
     hand = 1,
+    sill = kind === 'window' ? WINDOW_SILL : 0,
+    top = kind === 'window' ? WINDOW_TOP : DOOR_HEIGHT,
   ) {
     const o = new Group();
     o.position.x = x;
@@ -450,8 +456,9 @@ export class House {
     const f = 0.05;
     const d = thick + 0.02;
     if (kind === 'door') {
-      for (const s of [-1, 1]) box(f, DOOR_HEIGHT, d, this.frame, (s * (width - f)) / 2, DOOR_HEIGHT / 2);
-      box(width, f, d, this.frame, 0, DOOR_HEIGHT - f / 2);
+      const H = top;
+      for (const s of [-1, 1]) box(f, H, d, this.frame, (s * (width - f)) / 2, H / 2);
+      box(width, f, d, this.frame, 0, H - f / 2);
       // One leaf hinged at one jamb, or (double door) a half-width leaf at each jamb.
       const lw = (width - 2 * f) / leaves;
       for (const j of leaves === 2 ? [flip, -flip] : [flip * hand]) {
@@ -461,8 +468,8 @@ export class House {
         // reaches -j along x from its hinge, and a turn of θ about y moves its tip by j·sin θ along z.
         hinge.rotation.y = j * flip * 0.55;
         o.add(hinge);
-        const leaf = new Mesh(new BoxGeometry(lw, DOOR_HEIGHT - f, 0.04), this.leaf);
-        leaf.position.set((-j * lw) / 2, (DOOR_HEIGHT - f) / 2, 0);
+        const leaf = new Mesh(new BoxGeometry(lw, H - f, 0.04), this.leaf);
+        leaf.position.set((-j * lw) / 2, (H - f) / 2, 0);
         leaf.castShadow = leaf.receiveShadow = true;
         hinge.add(leaf);
         // Lever handles on both faces, near the free edge, pointing back towards the hinge.
@@ -475,8 +482,8 @@ export class House {
           hinge.add(rose, lever);
         }
       }
-    } else if (kind === 'glass') {
-      const h = DOOR_HEIGHT;
+    } else if (kind === 'glass' && sill <= 0.01) {
+      const h = top;
       for (const s of [-1, 1]) box(f, h, d, this.frame, (s * (width - f)) / 2, h / 2);
       box(width, f, d, this.frame, 0, h - f / 2);
       box(width, 0.02, d, this.frame, 0, 0.01);
@@ -495,12 +502,14 @@ export class House {
         box(pw - 0.08, ph - 0.09, 0.01, this.glass, px, py, pz);
       }
     } else {
-      const h = WINDOW_TOP - WINDOW_SILL;
-      const y = WINDOW_SILL + h / 2;
+      const h = top - sill;
+      const y = sill + h / 2;
       for (const s of [-1, 1]) box(f, h, d, this.frame, (s * (width - f)) / 2, y);
-      box(width, f, d, this.frame, 0, WINDOW_TOP - f / 2);
-      box(width + 0.06, 0.04, d + 0.08, this.frame, 0, WINDOW_SILL + 0.02);
-      box(0.03, h, 0.05, this.frame, 0, y);
+      box(width, f, d, this.frame, 0, top - f / 2);
+      box(width + 0.06, 0.04, d + 0.08, this.frame, 0, sill + 0.02);
+      // Mullions: one per 1.2 m of width (a wide glazed front is several panes).
+      const panes = Math.max(2, Math.round(width / 1.2));
+      for (let i = 1; i < panes; i++) box(0.03, h, 0.05, this.frame, -width / 2 + (width * i) / panes, y);
       box(width - 2 * f, h - f, 0.012, this.glass, 0, y);
     }
     return o;

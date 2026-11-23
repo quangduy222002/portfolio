@@ -33,7 +33,7 @@ import { $, toast } from '../../lib/dom/chrome';
 import { FLOORS, FURNITURE, GROUPS, WALLS } from './catalog';
 import { PHOTO_PREFIX, STYLES, STYLE_MODELS, registerPhotoStyle, styleColor, styleOf, styleSwatches } from './styles';
 import { customId, registerCustoms } from './custom';
-import type { AiQuestion, Brain, DrawingReading, FloorReview } from './ai';
+import type { AiQuestion, Brain, DrawingReading, FacadeOpening, FloorReview, FrontSide } from './ai';
 import { PlanEditor, type EditorHost, type Selection, type Tool } from './editor2d';
 import { House } from './house';
 import { onModelLoaded } from './furniture';
@@ -55,6 +55,7 @@ import {
   samplePlan,
   setStoreyHeight,
   splitWall,
+  openingSpan,
   storeyHeight,
   storeysOf,
   switchStorey,
@@ -138,6 +139,11 @@ export interface RoomcraftApi {
     shot: DrawingShot,
     rooms: Room[],
   ): { dropped: number; added: number; openings: number; named: number; items: number };
+  /**
+   * Puts the street elevation's openings on the current floor's facade (the walls along `front` end of the plan),
+   * replacing the ones there. `width` is the facade's width as the elevation dimensions it. Returns how many.
+   */
+  applyFacade(front: FrontSide, openings: FacadeOpening[], width?: number): number;
   /** Adds a floor above the others from a plan (undoable) and switches to it. */
   addStorey(p: Plan, name?: string): void;
   redraw(): void;
@@ -388,7 +394,8 @@ ${
           ['arch', 'Arched'],
         ]
           .map(([v, n]) => `<option value="${v}"${(o.shape ?? '') === v ? ' selected' : ''}>${n}</option>`)
-          .join('')}</select></label>`;
+          .join('')}</select></label>
+<div class="row"><label>Sill (m)<input type="number" data-act="sill" min="0" max="3" step="0.05" value="${openingSpan(o, storeyHeight(p)).sill.toFixed(2)}" /></label><label>Head (m)<input type="number" data-act="head" min="0.5" max="6" step="0.05" value="${openingSpan(o, storeyHeight(p)).head.toFixed(2)}" /></label></div>`;
     } else if (sel?.kind === 'wall') {
       const w = p.walls.find((x) => x.id === sel.id);
       if (w) {
@@ -505,6 +512,14 @@ ${
       it.type = t.value;
       inspector.dataset.for = '';
       return host.commit(`${FURNITURE[t.value]!.name}`);
+    }
+    if (t.dataset.act === 'sill' || t.dataset.act === 'head') {
+      const o = plan.openings.find((x) => x.id === editor.sel?.id);
+      const v = Number(t.value);
+      if (!o || !Number.isFinite(v)) return;
+      o[t.dataset.act] = Math.round(v * 100) / 100;
+      inspector.dataset.for = '';
+      return host.commit(t.dataset.act === 'sill' ? 'Sill height' : 'Head height');
     }
     if (t.dataset.act === 'shape') {
       const o = plan.openings.find((x) => x.id === editor.sel?.id);
@@ -1125,6 +1140,7 @@ ${
     plan: () => plan,
     rooms: () => rooms,
     setPlan(p, message) {
+      registerCustoms(p.customs);
       undo.push(JSON.stringify(plan));
       redo.length = 0;
       plan = p;
@@ -1242,6 +1258,75 @@ ${
       host.commit('Claude checked this floor against the drawing');
       return { dropped: drop.size, added, openings, named, items };
     },
+    applyFacade(front, list, width) {
+      const nodes = nodeMap(plan);
+      if (!plan.nodes.length || !list.length) return 0;
+      const xs = plan.nodes.map((n) => n.x);
+      const zs = plan.nodes.map((n) => n.z);
+      const [minX, maxX, minZ, maxZ] = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
+      // Seen from the street, the facade runs from the viewer's left to right; u is that distance, in plan metres.
+      const along = (x: number, z: number) =>
+        front === 'right' ? maxZ - z : front === 'left' ? z - minZ : front === 'top' ? maxX - x : x - minX;
+      const depth = (x: number, z: number) =>
+        front === 'right' ? maxX - x : front === 'left' ? x - minX : front === 'top' ? z - minZ : maxZ - z;
+      // The facade walls: running across the street end, up to 1.6 m back from the plan's front (behind a balcony, or
+      // a facade stepping in and out), straight or curved; railings hold no openings.
+      const facade = plan.walls.filter((w) => {
+        if (w.rail) return false;
+        const a = nodes.get(w.a)!;
+        const b = nodes.get(w.b)!;
+        const L = Math.hypot(b.x - a.x, b.z - a.z);
+        const across = Math.abs(along(b.x, b.z) - along(a.x, a.z)) >= L * 0.5;
+        return across && L > 0.3 && depth(a.x, a.z) < 1.6 && depth(b.x, b.z) < 1.6;
+      });
+      if (!facade.length) return 0;
+      const span = front === 'left' || front === 'right' ? maxZ - minZ : maxX - minX;
+      // The elevation's metres to the plan's (they agree within a few percent when both are right).
+      const k = width && Math.abs(span / width - 1) < 0.15 ? span / width : 1;
+      const ids = new Set(facade.map((w) => w.id));
+      plan.openings = plan.openings.filter((o) => !ids.has(o.wall));
+      let n = 0;
+      for (const f of list) {
+        const u = ((f.from + f.to) / 2) * k;
+        const wanted = (f.to - f.from) * k;
+        // The wall nearest the street that spans the opening's middle.
+        let best: { w: (typeof facade)[number]; t: number; L: number; d: number } | null = null;
+        for (const w of facade) {
+          const a = nodes.get(w.a)!;
+          const b = nodes.get(w.b)!;
+          const [ua, ub] = [along(a.x, a.z), along(b.x, b.z)];
+          const L = Math.hypot(b.x - a.x, b.z - a.z);
+          if (u < Math.min(ua, ub) - 0.05 || u > Math.max(ua, ub) + 0.05) continue;
+          const d = (depth(a.x, a.z) + depth(b.x, b.z)) / 2;
+          if (!best || d < best.d - 0.1 || (Math.abs(d - best.d) <= 0.1 && L > best.L))
+            best = { w, t: (u - ua) / (ub - ua), L, d };
+        }
+        if (!best) continue;
+        const width = Math.min(wanted, best.L - 0.1);
+        if (width < 0.3) continue;
+        const t = Math.min(1 - width / 2 / best.L, Math.max(width / 2 / best.L, best.t));
+        // Openings on one wall don't overlap: a later one that would is left out.
+        const clash = plan.openings.some(
+          (o) => o.wall === best.w.id && Math.abs(o.t - t) * best.L < (o.width + width) / 2 - 0.02,
+        );
+        if (clash) continue;
+        plan.openings.push({
+          id: uid('o'),
+          wall: best.w.id,
+          t,
+          width,
+          flip: 1,
+          kind: f.kind === 'door' ? 'door' : 'window',
+          ...(f.kind === 'glass' ? { tall: true } : {}),
+          ...(f.shape ? { shape: f.shape } : {}),
+          sill: Math.round(f.sill * 100) / 100,
+          head: Math.round(f.head * 100) / 100,
+        });
+        n++;
+      }
+      host.commit('Facade from the elevation');
+      return n;
+    },
     async readFurniture(shot) {
       const b = brain();
       if (!b) throw new Error('Claude is not available here: open the page in claude.ai or add an API key.');
@@ -1272,7 +1357,9 @@ ${
       return added;
     },
     addStorey(p, name) {
-      replaceHome(addStorey(plan, p, name), `${name ?? 'New floor'} added`);
+      const next = addStorey(plan, p, name);
+      registerCustoms(next.customs);
+      replaceHome(next, `${name ?? 'New floor'} added`);
     },
     redraw: () => editor.draw(),
     select: (sel) => editor.select(sel),

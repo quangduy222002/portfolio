@@ -524,8 +524,13 @@ export interface SheetFloor {
   height?: number;
 }
 
+/** Which end of the floor plans (as drawn on the sheet) faces the street. */
+export type FrontSide = 'left' | 'right' | 'top' | 'bottom';
+
 export interface SheetReading {
   floors: SheetFloor[];
+  /** The street elevation on the sheet (its box in sheet-image pixels) and the end of the plans it shows. */
+  facade?: { box: [number, number, number, number]; front: FrontSide };
   /** The architect's reading for the client: project, plot, floors, strengths, issues (markdown, in Vietnamese). */
   report: string;
 }
@@ -544,6 +549,7 @@ export async function analyseSheet(
   const out = await askJson<{
     floors?: { view?: string | number; box?: number[]; name?: string; height?: number | string }[];
     report?: string;
+    facade?: { box?: number[]; front?: string };
   }>(
     brain,
     `You are a senior Vietnamese architect reading a drawing sheet (one page of a set: floor plans, roof, sections, elevations, foundations, details, a site plan, a title block) so a 3D model of the house can be built from it.
@@ -551,7 +557,8 @@ The image is ${size.w} × ${size.h} px. The app outlined the drawings it found i
 ${views.map((v, i) => `- P${i + 1}: "${v.name}" at [${v.box.map((n) => Math.round(n)).join(', ')}] (x0, y0, x1, y1 px)`).join('\n') || '- none'}
 1. List every FLOOR PLAN of the building (ground floor, mezzanine/lửng, upper floors; not the roof plan, foundation, site plan, sections, elevations or details), from the lowest floor up. For each, give the outlined view it is ("view": "P3"), or, if the app missed it or outlined it wrongly, your own box around the whole plan with its dimension lines ("box": [x0, y0, x1, y1] px). Name it as the drawing does (e.g. "Tầng 1", "Lửng", "Tầng 2"). Give its floor-to-floor height in metres from the section or level marks when the sheet shows them (e.g. +0.200 to +3.000 → 2.8).
 2. Write "report": a professional reading for the client in Vietnamese markdown, short: project and plot (address, size, building footprint, floors, total height), what each floor holds (rooms, stairs, voids, balconies), interior design drawn on the plans (furniture, kitchen, sanitary ware, special doors such as curved sliding doors or folding gates), strengths, and issues to check (heights, stairs, setbacks, missing drawings or data). Only what the sheet shows; say when something is unclear.
-Reply {"floors": [{"view"?: "P1", "box"?: [x0, y0, x1, y1], "name": string, "height"?: number}], "report": string}.`,
+3. If the sheet has an elevation of the street front (MẶT ĐỨNG, mặt tiền, mặt đứng chính, front elevation), give "facade": its box around the elevation drawing itself (with its level marks, not the title) and "front": which end of the FLOOR PLANS, as they are drawn on this image, faces the street that elevation shows ("left", "right", "top" or "bottom"); tell it from the entrance, the gate, the street name or the site plan.
+Reply {"floors": [{"view"?: "P1", "box"?: [x0, y0, x1, y1], "name": string, "height"?: number}], "report": string, "facade"?: {"box": [x0, y0, x1, y1], "front": "left" | "right" | "top" | "bottom"}}.`,
     'Read the sheet.',
     [image],
   );
@@ -567,7 +574,78 @@ Reply {"floors": [{"view"?: "P1", "box"?: [x0, y0, x1, y1], "name": string, "hei
       ...(Number.isFinite(height) && height >= 2 && height <= 9 ? { height } : {}),
     });
   }
-  return { floors: floors.filter((f) => f.view !== undefined || f.box), report: text(out.report, 6000, '') };
+  const fb = out.facade?.box;
+  const front = out.facade?.front;
+  const facade =
+    Array.isArray(fb) &&
+    fb.length === 4 &&
+    fb.every((n) => Number.isFinite(Number(n))) &&
+    (front === 'left' || front === 'right' || front === 'top' || front === 'bottom')
+      ? { box: fb.map(Number) as [number, number, number, number], front: front as FrontSide }
+      : undefined;
+  return {
+    floors: floors.filter((f) => f.view !== undefined || f.box),
+    report: text(out.report, 6000, ''),
+    ...(facade ? { facade } : {}),
+  };
+}
+
+/** An opening in the street facade, as the elevation draws it: across the facade from its left edge seen from the
+ * street, and up from its floor's level, in metres. */
+export interface FacadeOpening {
+  from: number;
+  to: number;
+  sill: number;
+  head: number;
+  kind: 'door' | 'glass' | 'window';
+  shape?: 'round' | 'arch';
+}
+
+export interface ElevationReading {
+  /** The facade's width in metres, as the elevation dimensions it. */
+  width?: number;
+  /** Openings by floor, in the order of the floors given (lowest first). */
+  floors: FacadeOpening[][];
+}
+
+/**
+ * Claude reads the street elevation: every window, door, glazed front, round window and arch, floor by floor, with
+ * its position across the facade and its sill and head heights. The floor plans hold where the facade walls are; the
+ * elevation holds what the facade looks like.
+ */
+export async function readElevation(
+  brain: Brain,
+  image: Blob,
+  size: { w: number; h: number },
+  floors: { name: string; height?: number }[],
+): Promise<ElevationReading> {
+  const out = await askJson<{
+    width?: number | string;
+    floors?: { name?: string; openings?: Record<string, unknown>[] }[];
+  }>(
+    brain,
+    `You are a senior Vietnamese architect reading the street elevation (mặt đứng) of a house so its facade can be built in 3D. The image is ${size.w} × ${size.h} px.
+The floors, from the ground up, with their floor-to-floor heights from the section:
+${floors.map((f, i) => `${i + 1}. ${f.name}${f.height ? ` (${f.height} m)` : ''}`).join('\n')}
+Use the dimension figures and level marks drawn on the elevation for scale. Give "width": the facade's width in metres. Then for each floor above, in that order, every opening in that floor's facade: "from" and "to" in metres across the facade measured from its LEFT edge as drawn; "sill" and "head" in metres above that floor's finished level (a shopfront or a glazed door starts at 0); "kind": "door" (solid leaf), "glass" (glazed door, sliding glass, shopfront glazed to the floor) or "window"; "shape": "round" for a circular window, "arch" for an arched top, else leave it out. A wide glazed front split by mullions is one opening. Leave out railings, planters, decorative panels and the roof.
+Reply {"width": number, "floors": [{"name": string, "openings": [{"from": number, "to": number, "sill": number, "head": number, "kind": "door" | "glass" | "window", "shape"?: "round" | "arch"}]}]}.`,
+    'Read the elevation.',
+    [image],
+  );
+  const num = (v: unknown) => Number(v);
+  const width = num(out.width);
+  return {
+    ...(Number.isFinite(width) && width > 1 && width < 60 ? { width } : {}),
+    floors: floors.map((_, i) =>
+      (out.floors?.[i]?.openings ?? []).flatMap((o): FacadeOpening[] => {
+        const [from, to, sill, head] = [num(o.from), num(o.to), num(o.sill), num(o.head)];
+        if (![from, to, sill, head].every(Number.isFinite) || to - from < 0.2 || head - sill < 0.2) return [];
+        const kind = o.kind === 'door' || o.kind === 'glass' ? o.kind : 'window';
+        const shape = o.shape === 'round' || o.shape === 'arch' ? o.shape : undefined;
+        return [{ from, to, sill: Math.max(0, sill), head, kind, ...(shape ? { shape } : {}) }];
+      }),
+    ),
+  };
 }
 
 /** What Claude changes on one floor the app built: walls, openings, room names, and the interior drawn on it. */

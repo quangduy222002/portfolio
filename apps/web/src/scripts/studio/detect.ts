@@ -24,6 +24,7 @@ import {
   type PlanNode,
   type Wall,
 } from '../room/plan';
+import type { CustomDef, CustomPart } from '../room/custom';
 import { inRegion, type Drawing, type Region, type Segment } from './drawing';
 
 interface Line {
@@ -679,10 +680,18 @@ export function detectWalls(d: Drawing, region: Region): DetectResult {
   const toPlanPt = (x: number, y: number) => [(x - ox) / 1000, (oy - y) / 1000] as const;
   /** Pieces of curved walls: short by design, so never taken for stubs. */
   const curved = new Set<string>();
+  /** Single heavy curves (built-ins, not walls), as polylines in plan metres. */
+  const builtIns: [number, number][][] = [];
+  // Pairs of curves make a curved wall. A single heavy curve is not a wall: drawn in the cut pen beside a bed or in a
+  // corner, it is a tall built-in (a curved wardrobe front, a display niche), built as curved panels.
   for (const cw of curvedWalls(wallChords, wallTop)) {
     // A curve shorter than a door leaf is a fixture's edge, not a wall.
     const span = cw.pts.slice(1).reduce((t, p, i) => t + Math.hypot(p[0] - cw.pts[i]![0], p[1] - cw.pts[i]![1]), 0);
     if (span < 400) continue;
+    if (cw.single) {
+      builtIns.push(cw.pts.map((p) => toPlanPt(...p) as unknown as [number, number]));
+      continue;
+    }
     const ids = cw.pts.map((p) => nodeAt(...toPlanPt(...p)));
     for (let i = 1; i < ids.length; i++)
       if (ids[i] !== ids[i - 1]) {
@@ -806,6 +815,11 @@ export function detectWalls(d: Drawing, region: Region): DetectResult {
     if (plan.items.some((it) => Math.hypot(it.x - c.x, it.z - c.z) < 0.15)) continue;
     plan.items.push({ id: uid('i'), type: c.size > 0.26 ? 'columnLarge' : 'column', x: c.x, z: c.z, rot: 0 });
   }
+  for (const pts of builtIns) {
+    const b = curvedBuiltIn(pts);
+    (plan.customs ??= {})[b.id] = b.def;
+    plan.items.push({ id: uid('i'), type: `custom:${b.id}`, x: b.x, z: b.z, rot: 0 });
+  }
   tidy(plan);
   return { plan, walls: plan.walls.length, openings: plan.openings.length };
 }
@@ -880,7 +894,10 @@ function nearestOn(p: Pt, line: Pt[]): { d: number; q: Pt } {
  * by side a wall's thickness apart (60–350 mm over most of their length) are the faces of one curved wall. Returns its centre
  * line, resampled into pieces short enough to follow the curve, and its thickness.
  */
-export function curvedWalls(chords: Chord[], singlePen: number | null = null): { pts: Pt[]; t: number }[] {
+export function curvedWalls(
+  chords: Chord[],
+  singlePen: number | null = null,
+): { pts: Pt[]; t: number; single?: true }[] {
   const chains: Pt[][] = [];
   /** The pen each curve is drawn with (its first piece's). */
   const penOf = new Map<Pt[], number | undefined>();
@@ -948,7 +965,7 @@ export function curvedWalls(chords: Chord[], singlePen: number | null = null): {
   // Both faces of a wall are drawn with one pen: such pairs first (a curved sliding door's track runs along the wall's
   // face in a finer pen, and would otherwise pair with it), then the closest.
   cand.sort((p, q) => Number(q.same) - Number(p.same) || p.t - q.t);
-  const out: { pts: Pt[]; t: number }[] = [];
+  const out: { pts: Pt[]; t: number; single?: true }[] = [];
   // Resample along a centre line: pieces of about a twelfth of it, 250–700 mm.
   const resample = (mid: Pt[]) => {
     const L = length(mid);
@@ -976,7 +993,7 @@ export function curvedWalls(chords: Chord[], singlePen: number | null = null): {
     for (const l of curves)
       if (!used.has(l) && (penOf.get(l) ?? 0) >= singlePen * 0.95 && length(l) >= 800) {
         used.add(l);
-        out.push({ pts: resample(l), t: 100 });
+        out.push({ pts: resample(l), t: 100, single: true });
       }
   return out;
 }
@@ -1563,4 +1580,49 @@ function uStairs(zones: StairZone[]): StairZone[] {
       });
     }
   return out;
+}
+
+/**
+ * A curved built-in from the curve its front follows (plan metres): thin wooden panels 2.2 m high along each piece of
+ * the curve, as one object (footprint round the curve, origin at its middle) the planner can move or delete.
+ */
+function curvedBuiltIn(pts: [number, number][]): { id: string; def: CustomDef; x: number; z: number } {
+  const xs = pts.map((p) => p[0]);
+  const zs = pts.map((p) => p[1]);
+  const [x0, x1, z0, z1] = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
+  const [cx, cz] = [(x0 + x1) / 2, (z0 + z1) / 2];
+  const H = 2.2;
+  const parts: CustomPart[] = [];
+  for (let i = 1; i < pts.length; i++) {
+    const [ax, az] = [pts[i - 1]![0] - cx, pts[i - 1]![1] - cz];
+    const [bx, bz] = [pts[i]![0] - cx, pts[i]![1] - cz];
+    const L = Math.hypot(bx - ax, bz - az);
+    if (L < 0.02) continue;
+    parts.push({
+      shape: 'box',
+      w: L + 0.02,
+      h: H,
+      d: 0.05,
+      x: (ax + bx) / 2,
+      y: H / 2,
+      z: (az + bz) / 2,
+      // A box's length runs along x; turning it by θ about y points it along (cos θ, −sin θ).
+      ry: (Math.atan2(-(bz - az), bx - ax) * 180) / Math.PI,
+      material: 'wood',
+      color: '#d8c3a0',
+    });
+  }
+  return {
+    id: uid('curve'),
+    def: {
+      name: 'Curved built-in (as drawn)',
+      w: Math.max(0.1, x1 - x0),
+      d: Math.max(0.1, z1 - z0),
+      h: H,
+      room: 'Bedroom',
+      parts,
+    },
+    x: cx,
+    z: cz,
+  };
 }

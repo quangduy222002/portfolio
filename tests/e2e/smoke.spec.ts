@@ -1167,6 +1167,24 @@ test('Claude reads the whole sheet, checks each floor and furnishes it from the 
                       { view: 'P2', name: 'Tầng 2', height: 3.2 },
                     ],
                     report: '## Thông tin\n- Nhà 8 × 6 m, 2 tầng.',
+                    facade: { box: [100, 100, 400, 400], front: 'bottom' },
+                  };
+                if (prompt.includes('street elevation'))
+                  return {
+                    width: 8,
+                    floors: [
+                      {
+                        name: 'Tầng 1',
+                        openings: [
+                          { from: 0.8, to: 3.2, sill: 0, head: 2.6, kind: 'glass' },
+                          { from: 5, to: 6.2, sill: 0.9, head: 2.4, kind: 'window', shape: 'arch' },
+                        ],
+                      },
+                      {
+                        name: 'Tầng 2',
+                        openings: [{ from: 3.4, to: 4.6, sill: 1, head: 2.2, kind: 'window', shape: 'round' }],
+                      },
+                    ],
                   };
                 return {
                   dropWalls: [],
@@ -1234,6 +1252,12 @@ test('Claude reads the whole sheet, checks each floor and furnishes it from the 
   await expect.poll(async () => JSON.stringify((await saved()).items ?? [])).toContain('ph:Sofa_01');
   const plan = await saved();
   expect(Object.values(plan.rooms).map((r) => (r as { name?: string }).name)).toContain('Phòng khách');
+  // The street facade took the elevation's openings: a round window upstairs, a glazed front and an arch below.
+  type Op = { shape?: string; tall?: boolean; sill?: number; head?: number };
+  expect(plan.openings.some((o: Op) => o.shape === 'round' && o.sill === 1 && o.head === 2.2)).toBe(true);
+  const ground: Op[] = plan.storeys[0].plan.openings;
+  expect(ground.some((o) => o.tall && o.head === 2.6)).toBe(true);
+  expect(ground.some((o) => o.shape === 'arch' && o.head === 2.4)).toBe(true);
   expect(errors).toEqual([]);
 });
 

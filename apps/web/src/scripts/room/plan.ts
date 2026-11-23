@@ -43,6 +43,18 @@ export interface Opening {
   tall?: boolean;
   /** The opening's outline in the facade: a round window (oculus) or an arched door or window; square by default. */
   shape?: 'round' | 'arch';
+  /** Height of the sill above the floor, in metres (windows 0.9 by default, doors and glass doors 0). */
+  sill?: number;
+  /** Height of the head (the top of the opening) above the floor, in metres (2.1 by default). */
+  head?: number;
+}
+
+/** An opening's sill and head heights above the floor, within a wall `height` high. */
+export function openingSpan(o: Opening, height: number): { sill: number; head: number } {
+  const low = o.kind === 'door' || (o.kind === 'window' && !!o.tall);
+  const head = Math.min(height - 0.05, Math.max(0.3, o.head ?? (low ? DOOR_HEIGHT : WINDOW_TOP)));
+  const sill = Math.max(0, Math.min(head - 0.2, o.sill ?? (low ? 0 : WINDOW_SILL)));
+  return { sill, head };
 }
 
 export interface Item {
@@ -588,6 +600,8 @@ export function addStorey(p: Plan, floor?: Plan, name?: string, height = 3.3): P
   list.push({ name: name ?? `Floor ${list.length + 1}`, elevation: Math.round((top + height) * 1000) / 1000 });
   const next: Plan = { ...fresh, storeys: list, storey: list.length - 1 };
   for (const k of HOME_WIDE) (next as unknown as Record<string, unknown>)[k] = p[k];
+  // Objects the new floor brought with it (built-ins read from its drawing) join the home's.
+  if (floor?.customs) next.customs = { ...p.customs, ...floor.customs };
   return next;
 }
 

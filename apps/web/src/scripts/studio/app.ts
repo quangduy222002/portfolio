@@ -4,7 +4,7 @@
  */
 import { $, toast } from '../../lib/dom/chrome';
 import { startRoomcraft, type DrawingShot, type RoomcraftApi, type RoomcraftOptions } from '../room/app';
-import type { SheetFloor } from '../room/ai';
+import type { ElevationReading, FrontSide, SheetFloor } from '../room/ai';
 import { saveFile } from '../../lib/claude-host';
 import { findRooms, isFloorArea, roomName, storeyHeight, storeysOf, type Plan, type Room } from '../room/plan';
 import type { Underlay } from '../room/techdraw';
@@ -572,6 +572,38 @@ export async function startStudio(gl: boolean) {
   };
   /* ---------- Claude reads the whole sheet ---------- */
   /** The whole sheet as an image (long side 2400 px) with the plans the app found outlined and numbered. */
+  /** A part of the sheet (an elevation, say) as a sharp image of its own, for Claude. */
+  const regionShot = async (r: Region, size = 1600) => {
+    const d = drawing!;
+    const W = r.x1 - r.x0;
+    const H = r.y1 - r.y0;
+    const px = size / Math.max(W, H);
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(W * px));
+    c.height = Math.max(1, Math.round(H * px));
+    const g = c.getContext('2d')!;
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, c.width, c.height);
+    const img = imageFor(d);
+    await img?.decode().catch(() => undefined);
+    if (d.image && img?.complete && img.naturalWidth) {
+      const iw = img.naturalWidth / (d.image.x1 - d.image.x0);
+      const ih = img.naturalHeight / (d.image.y1 - d.image.y0);
+      g.drawImage(img, (r.x0 - d.image.x0) * iw, (d.image.y1 - r.y1) * ih, W * iw, H * ih, 0, 0, c.width, c.height);
+    } else {
+      g.strokeStyle = '#000000';
+      g.lineWidth = 1;
+      g.beginPath();
+      for (const s of d.segs) {
+        if (!inRegion(r, s.x1, s.y1) && !inRegion(r, s.x2, s.y2)) continue;
+        g.moveTo((s.x1 - r.x0) * px, (r.y1 - s.y1) * px);
+        g.lineTo((s.x2 - r.x0) * px, (r.y1 - s.y2) * px);
+      }
+      g.stroke();
+    }
+    const image = await new Promise<Blob | null>((res) => c.toBlob(res, 'image/png'));
+    return { image, size: { w: c.width, h: c.height } };
+  };
   const sheetShot = async () => {
     const d = drawing!;
     const b = d.bounds;
@@ -695,11 +727,13 @@ export async function startStudio(gl: boolean) {
     btn.disabled = true;
     const log: string[] = [];
     try {
-      const { analyseSheet, reviewFloor } = await import('../room/ai');
+      const { analyseSheet, readElevation, reviewFloor } = await import('../room/ai');
       // Every sheet of the file is read (a villa's floors are often one per sheet), in order.
       const sheets = openSheet && sheetCount > 1 ? Array.from({ length: sheetCount }, (_, i) => i + 1) : [sheetNow];
       const floors: (SheetFloor & { sheet: number; region: Region })[] = [];
       const reports: string[] = [];
+      /** The street elevation, when a sheet has one: its picture and the end of the plans it shows. */
+      let facade: { image: Blob; size: { w: number; h: number }; front: FrontSide } | null = null;
       for (const n of sheets) {
         if (n !== sheetNow) await openSheet!(n);
         status.textContent = `Claude is reading ${sheets.length > 1 ? `sheet ${n} of ${sheets.length}` : 'the sheet'}…`;
@@ -707,6 +741,10 @@ export async function startStudio(gl: boolean) {
         if (!shot.image) continue;
         const reading = await analyseSheet(brain, shot.image, shot.size, shot.boxes);
         if (reading.report) reports.push(sheets.length > 1 ? `## Sheet ${n}\n${reading.report}` : reading.report);
+        if (reading.facade && !facade) {
+          const shotE = await regionShot(shot.toRegion(reading.facade.box));
+          if (shotE.image) facade = { image: shotE.image, size: shotE.size, front: reading.facade.front };
+        }
         for (const f of reading.floors)
           floors.push({
             ...f,
@@ -716,6 +754,16 @@ export async function startStudio(gl: boolean) {
       }
       if (!floors.length) throw new Error('Claude found no floor plan in this file. Select one by hand.');
       const reading = { report: reports.join('\n\n') };
+      // The facade: Claude reads the elevation once for all floors, then each floor's street walls take its openings.
+      let elevation: ElevationReading | null = null;
+      if (facade) {
+        status.textContent = 'Claude is reading the street elevation…';
+        try {
+          elevation = await readElevation(brain, facade.image, facade.size, floors);
+        } catch (err) {
+          log.push(`- **Facade**: ${err instanceof Error ? err.message : 'the elevation could not be read'}`);
+        }
+      }
       for (const [i, f] of floors.entries()) {
         if (f.sheet !== sheetNow) await openSheet!(f.sheet);
         status.textContent = `Building ${f.name} (${i + 1} of ${floors.length})…`;
@@ -746,6 +794,11 @@ export async function startStudio(gl: boolean) {
         } catch (err) {
           log.push(`- **${f.name}**: ${err instanceof Error ? err.message : 'the check failed'}`);
         }
+        // The street facade, from the elevation (after the check, so its openings win on the facade walls).
+        const front = elevation?.floors[i]?.length
+          ? api.applyFacade(facade!.front, elevation.floors[i]!, elevation.width)
+          : 0;
+        if (front) log.push(`- **${f.name}** facade: ${front} openings from the elevation.`);
       }
       $('analysisBody').innerHTML = md(`${reading.report}\n\n## What Floorwise built\n${log.join('\n')}`);
       $<HTMLDialogElement>('analysisDlg').showModal();
