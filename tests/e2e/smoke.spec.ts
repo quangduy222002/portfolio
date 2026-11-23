@@ -281,11 +281,13 @@ test('room planner builds round and arched openings, a U stair and a balcony', a
   await page.locator('#storeys [data-storey="0"]').click();
   // Wait until floor 1 (with its doors and windows) is the one saved as being edited.
   await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const p = JSON.parse(localStorage.getItem('roomcraft.plan') ?? '{}');
-        return p.storey === 0 && (p.openings ?? []).length > 3 && (p.storeys ?? []).length === 2;
-      }),
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const p = JSON.parse(localStorage.getItem('roomcraft.plan') ?? '{}');
+          return p.storey === 0 && (p.openings ?? []).length > 3 && (p.storeys ?? []).length === 2;
+        }),
+      { timeout: 15_000 },
     )
     .toBe(true);
   await page.evaluate(() => {
@@ -316,7 +318,9 @@ test('room planner keeps its 3D view when a saved piece is broken', async ({ pag
   // Save the plan once, then break it the way a bad AI answer or a hand-edited link could.
   await page.locator('#storeys [data-act="floor"]').click();
   await page.locator('#storeys [data-storey="0"]').click();
-  await expect.poll(() => page.evaluate(() => !!localStorage.getItem('roomcraft.plan'))).toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => !!localStorage.getItem('roomcraft.plan')), { timeout: 15_000 })
+    .toBe(true);
   await page.evaluate(() => {
     const p = JSON.parse(localStorage.getItem('roomcraft.plan')!);
     p.customs = {

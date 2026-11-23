@@ -699,6 +699,8 @@ export function detectWalls(d: Drawing, region: Region): DetectResult {
   // Small clusters of walls apart from the building, with no door or window, are notes and symbols read as walls
   // (a legend box, a north arrow, a furniture block): keep only clusters of some size or joined to the main one.
   dropStrayClusters(plan);
+  // Kitchen units, counters and table edges drawn with a lighter pen than the walls, read as walls (D4).
+  dropLightPenWalls(plan, H, V, penLen, wallPen, ox, oy);
   // Short walls touching nothing are leftovers (dimension ticks, labels): drop them.
   const degree = new Map<string, number>();
   for (const w of plan.walls) for (const id of [w.a, w.b]) degree.set(id, (degree.get(id) ?? 0) + 1);
@@ -1170,4 +1172,102 @@ function dropStrayClusters(plan: Plan) {
     const len = size.get(r) ?? 0;
     return len === main || opened.has(r) || len >= Math.max(3, main * 0.2);
   });
+}
+
+/**
+ * Where one heavy pen clearly draws the walls (the cut walls, as TCVN draws them) and lighter pens above the fine one
+ * draw other things in view (kitchen units, counters, a table's edge, a fence beyond the lot), a wall built only from
+ * lighter-pen lines is kept only as a partition: its group of such walls meets real walls at two points or more and
+ * leaves no free end in the room. A counter run out from a wall and ending in the room goes.
+ */
+function dropLightPenWalls(
+  plan: Plan,
+  H: Line[],
+  V: Line[],
+  penLen: Map<number, number>,
+  wallPen: number | null,
+  ox: number,
+  oy: number,
+) {
+  if (wallPen === null) return;
+  const heavyPens = [...penLen].filter(([p]) => p >= wallPen - 1e-6);
+  const heavyTotal = heavyPens.reduce((t, [, v]) => t + v, 0);
+  const main = heavyPens.filter(([, v]) => v >= heavyTotal * 0.25).map(([p]) => p);
+  if (!main.length) return;
+  const top = Math.max(...main);
+  const lighter = heavyPens.some(([p, v]) => p * 1.3 <= top && v >= heavyTotal * 0.1);
+  if (!lighter) return;
+  const nodes = new Map(plan.nodes.map((n) => [n.id, n]));
+  /** The heaviest pen among the lines along a wall's faces. */
+  const penOf = (w: Wall): number | null => {
+    const a = nodes.get(w.a)!;
+    const b = nodes.get(w.b)!;
+    const horiz = Math.abs(b.z - a.z) < 0.01;
+    const vert = Math.abs(b.x - a.x) < 0.01;
+    if (!horiz && !vert) return null; // curved or slanted walls are not judged
+    const lines = horiz ? H : V;
+    const c = horiz ? oy - a.z * 1000 : a.x * 1000 + ox;
+    const [s0, s1] = horiz
+      ? [Math.min(a.x, b.x) * 1000 + ox, Math.max(a.x, b.x) * 1000 + ox]
+      : [oy - Math.max(a.z, b.z) * 1000, oy - Math.min(a.z, b.z) * 1000];
+    const half = ((w.thick ?? 0.15) * 1000) / 2;
+    let best = -1;
+    for (const l of lines) {
+      if (Math.abs(Math.abs(l.c - c) - half) > 20) continue;
+      const overlap = Math.min(l.b, s1) - Math.max(l.a, s0);
+      if (overlap < Math.min(200, (s1 - s0) * 0.3)) continue;
+      best = Math.max(best, l.pen ?? 0);
+    }
+    return best < 0 ? null : best;
+  };
+  const light = new Set(
+    plan.walls
+      .filter((w) => {
+        const p = penOf(w);
+        return p !== null && p * 1.25 < top;
+      })
+      .map((w) => w.id),
+  );
+  if (!light.size) return;
+  // Peel light walls that end free in the room, again and again (a counter's run, then the piece it hung from).
+  const drop = new Set<string>();
+  for (let changed = true; changed;) {
+    changed = false;
+    const degree = new Map<string, number>();
+    for (const w of plan.walls)
+      if (!drop.has(w.id)) for (const id of [w.a, w.b]) degree.set(id, (degree.get(id) ?? 0) + 1);
+    for (const w of plan.walls)
+      if (light.has(w.id) && !drop.has(w.id) && (degree.get(w.a) === 1 || degree.get(w.b) === 1)) {
+        drop.add(w.id);
+        changed = true;
+      }
+  }
+  // What is left of the light walls must hang between real walls: a group touching them at fewer than two points is a
+  // closed piece of furniture fixed to one wall.
+  const heavyAt = new Set(plan.walls.filter((w) => !light.has(w.id)).flatMap((w) => [w.a, w.b]));
+  const seen = new Set<string>();
+  for (const start of plan.walls) {
+    if (!light.has(start.id) || drop.has(start.id) || seen.has(start.id)) continue;
+    const group: Wall[] = [];
+    const queue = [start];
+    seen.add(start.id);
+    while (queue.length) {
+      const w = queue.pop()!;
+      group.push(w);
+      for (const o of plan.walls)
+        if (
+          light.has(o.id) &&
+          !drop.has(o.id) &&
+          !seen.has(o.id) &&
+          [o.a, o.b].some((id) => id === w.a || id === w.b)
+        ) {
+          seen.add(o.id);
+          queue.push(o);
+        }
+    }
+    const anchors = new Set(group.flatMap((w) => [w.a, w.b]).filter((id) => heavyAt.has(id)));
+    if (anchors.size < 2) for (const w of group) drop.add(w.id);
+  }
+  plan.walls = plan.walls.filter((w) => !drop.has(w.id));
+  plan.openings = plan.openings.filter((o) => !drop.has(o.wall));
 }
