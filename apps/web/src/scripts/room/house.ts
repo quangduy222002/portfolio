@@ -31,6 +31,8 @@ import { buildFurniture, setFixtureGlow } from './furniture';
 import {
   DOOR_HEIGHT,
   OPEN_ROOM,
+  OUTSIDE_ROOM,
+  SHAFT_ROOM,
   PARAPET,
   PLINTH,
   RAIL_HEIGHT,
@@ -189,15 +191,21 @@ export class House {
         })
         .map((o) => new Path(o.poly.map(([x, z]) => new Vector2(x, flip * z))));
     for (const r of rooms) {
+      const name = roomName(p, r);
+      // A service shaft is a void through the floors: no floor, no slab.
+      if (SHAFT_ROOM.test(name)) continue;
+      // The yard round a ground floor lies at yard level, below the raised floor.
+      const yard = this.ground && OUTSIDE_ROOM.test(name);
       const shape = new Shape(r.poly.map(([x, z]) => ({ x, y: -z }) as never));
       shape.holes.push(...holesIn(r, below, -1));
       const geo = new ShapeGeometry(shape);
       const floor = new Mesh(geo, this.finish('floor', roomStyle(p, r).floor));
       floor.rotation.x = -Math.PI / 2;
-      floor.position.y = 0.004;
+      floor.position.y = yard ? -PLINTH + 0.004 : 0.004;
       floor.receiveShadow = true;
       floor.userData.room = r.key;
       this.structure.add(floor);
+      if (yard) continue;
       // The structural floor under it: the slab (upper floors) or the raised ground-floor plinth.
       const slab = new Mesh(
         new ExtrudeGeometry(shape, { depth: this.ground ? PLINTH : SLAB, bevelEnabled: false }),

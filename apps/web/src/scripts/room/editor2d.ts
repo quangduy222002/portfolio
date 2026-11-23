@@ -10,9 +10,11 @@ import {
   itemCorners,
   len,
   nodeMap,
+  OUTSIDE_ROOM,
   roomAt,
   roomName,
   roomStyle,
+  SHAFT_ROOM,
   snapToWall,
   splitWall,
   tidy,
@@ -824,7 +826,16 @@ export class PlanEditor {
       c.fillText(roomName(p, r), X(cx), Z(cz) - 8);
       c.font = '500 11px "Geist Mono", ui-monospace, monospace';
       c.fillStyle = '#667085';
-      c.fillText(`${r.area.toFixed(1)} m²`, X(cx), Z(cz) + 9);
+      const name = roomName(p, r);
+      c.fillText(
+        SHAFT_ROOM.test(name)
+          ? 'shaft'
+          : OUTSIDE_ROOM.test(name)
+            ? `${r.area.toFixed(1)} m² · outside`
+            : `${r.area.toFixed(1)} m²`,
+        X(cx),
+        Z(cz) + 9,
+      );
     }
 
     // Nodes (handles) when editing walls

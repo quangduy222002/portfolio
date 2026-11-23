@@ -118,7 +118,14 @@ export const SLAB = 0.12;
 export const PARAPET = 0.55;
 /** Rooms open to the sky: their walls are parapets, not full-height walls, and they get no roof. */
 export const OPEN_ROOM =
-  /balcony|ban c[oô]ng|s[aâ]n th[uư][oợ]ng|terrace|s[aâ]n (sau|tr[uư][oớ]c|v[uư][oờ]n)|logia|l[oô] gia/i;
+  /balcony|ban c[oô]ng|s[aâ]n th[uư][oợ]ng|terrace|s[aâ]n (sau|tr[uư][oớ]c|v[uư][oờ]n)|logia|l[oô] gia|\byard\b|garden/i;
+/** Ground outside the building on the lot (a front yard, the setback strip a permit leaves unbuilt): at yard level,
+ * not floor area. */
+export const OUTSIDE_ROOM = /\byard\b|garden|setback|s[aâ]n (sau|tr[uư][oớ]c|v[uư][oờ]n)|kh[oô]ng x[aâ]y d[uự]ng/i;
+/** A service shaft (pipes, ducts): a void through the floors, not a room. */
+export const SHAFT_ROOM = /shaft|h[oộ]p k|\bduct\b|gen k/i;
+/** Counts in the rooms and the net floor area: not a shaft, not the yard. */
+export const isFloorArea = (name: string) => !OUTSIDE_ROOM.test(name) && !SHAFT_ROOM.test(name);
 export const DOOR_HEIGHT = 2.1;
 export const WINDOW_SILL = 0.9;
 export const WINDOW_TOP = 2.1;

@@ -19,6 +19,7 @@ import { SYMBOL_ROOM, type FoundSymbol } from './symbols';
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[đĐ]/g, 'd').toLowerCase();
 
 const LABELS: [RegExp, string][] = [
+  [/\b(san (truoc|sau|vuon)|khong xay dung|setback|yard|garden)\b/, 'Yard'],
   [/\b(ban cong|lo ?gia|loggia|balcon(y|ies)?|terrace|san phoi)\b/, 'Balcony'],
   [/\b(wc|ve sinh|toilet|bath(room)?|(phong|p\.?) ?tam|shower)\b/, 'Bathroom'],
   [/\b(bep|kitchen)\b/, 'Kitchen'],
@@ -38,7 +39,13 @@ export function labelOf(text: string): string | null {
 }
 
 /** Fills plan.rooms names from labels and the balcony rule. Returns the names it gave, by room key. */
-export function nameRooms(plan: Plan, d: Drawing, region: Region, found: FoundSymbol[] = []): Map<string, string> {
+export function nameRooms(
+  plan: Plan,
+  d: Drawing,
+  region: Region,
+  found: FoundSymbol[] = [],
+  ground = false,
+): Map<string, string> {
   const k = d.mmPerUnit ?? 1;
   let rooms = findRooms(plan);
   const names = new Map<string, string>();
@@ -147,12 +154,16 @@ export function nameRooms(plan: Plan, d: Drawing, region: Region, found: FoundSy
     if (windows.length || holdsShaft(r)) names.set(r.key, 'Bathroom');
   }
 
+  // On the ground floor there are no balconies: an open space at the edge reached through glazing is the yard (the
+  // setback strip a permit leaves unbuilt), at yard level and not floor area.
+  if (ground) for (const [key, name] of names) if (name === 'Balcony') names.set(key, 'Yard');
+
   for (const [key, name] of names) plan.rooms[key] = { ...plan.rooms[key], name };
 
   // You walk onto a balcony: the glazing between it and the flat is a glass door from the floor, not a window. Its open
   // front (an outside edge drawn with glazing or as a thin line) is a railing, not a wall; solid side walls stay.
   for (const r of rooms) {
-    if (names.get(r.key) !== 'Balcony') continue;
+    if (names.get(r.key) !== 'Balcony' && names.get(r.key) !== 'Yard') continue;
     for (const w of wallsOf(r)) {
       if (uses.get(w.id) !== 1) continue;
       const glazed = plan.openings.some((o) => o.wall === w.id && o.kind === 'window');

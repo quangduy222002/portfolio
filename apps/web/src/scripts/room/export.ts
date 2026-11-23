@@ -8,7 +8,17 @@
  * Pure geometry, no three.js: loaded only when someone exports.
  */
 import { FURNITURE } from './catalog';
-import { findRooms, nodeMap, roomName, wallReach, type Opening, type Plan, type Room, type Vec2 } from './plan';
+import {
+  findRooms,
+  isFloorArea,
+  nodeMap,
+  roomName,
+  wallReach,
+  type Opening,
+  type Plan,
+  type Room,
+  type Vec2,
+} from './plan';
 
 export type Seg = [Vec2, Vec2];
 export interface Arc {
@@ -235,7 +245,8 @@ export function planToSvg(p: Plan, title = 'Floor plan'): string {
     const sweep = a.from[0] * a.to[1] - a.from[1] * a.to[0] > 0 ? 1 : 0;
     return `M${P(p0)}A${(a.r * 100).toFixed(1)},${(a.r * 100).toFixed(1)} 0 0 ${sweep} ${P(p1)}`;
   };
-  const area = d.rooms.reduce((s, r) => s + r.room.area, 0);
+  const counted = d.rooms.filter((r) => isFloorArea(r.name));
+  const area = counted.reduce((s, r) => s + r.room.area, 0);
   const foot = (z1 + m + 0.25) * 100;
   const o: string[] = [];
   o.push(
@@ -267,7 +278,7 @@ export function planToSvg(p: Plan, title = 'Floor plan'): string {
   const left = (x0 - m + 0.3) * 100;
   o.push(
     `<text x="${left.toFixed(1)}" y="${foot.toFixed(1)}" font-size="14" font-weight="600" fill="#101828">${esc(title)}</text>`,
-    `<text x="${left.toFixed(1)}" y="${(foot + 18).toFixed(1)}" font-size="10" fill="#667085">${d.rooms.length} rooms · ${area.toFixed(1)} m² net floor area</text>`,
+    `<text x="${left.toFixed(1)}" y="${(foot + 18).toFixed(1)}" font-size="10" fill="#667085">${counted.length} rooms · ${area.toFixed(1)} m² net floor area</text>`,
   );
   const bar = (x1 + m - 0.3) * 100 - 100;
   o.push(

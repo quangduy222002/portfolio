@@ -583,6 +583,39 @@ test('floor plan import draws the technical sheets to check before 3D', async ({
   expect(errors).toEqual([]);
 });
 
+test('floor plan import names the front yard and leaves it out of the rooms', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('studio/');
+  await expect(page.locator('#viewer.ready')).toBeAttached({ timeout: 60_000 });
+  const rect = (x0: number, y0: number, x1: number, y1: number) =>
+    [
+      [x0, y0, x1, y0],
+      [x1, y0, x1, y1],
+      [x1, y1, x0, y1],
+      [x0, y1, x0, y0],
+    ].flatMap(([a, b, c, d]) => ['0', 'LINE', '8', 'WALL', '10', a, '20', b, '11', c, '21', d]);
+  const dxf = [
+    ...['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', '4', '0', 'ENDSEC'],
+    ...['0', 'SECTION', '2', 'ENTITIES'],
+    ...rect(0, 0, 6000, 4000),
+    ...rect(200, 200, 5800, 3800),
+    // The strip in front of a townhouse, labelled the way permit drawings do.
+    ...['0', 'TEXT', '8', 'TEXT', '10', '2000', '20', '2000', '40', '250', '1', 'SÂN TRƯỚC'],
+    ...['0', 'ENDSEC', '0', 'EOF'],
+  ].join('\n');
+  await page
+    .locator('#file')
+    .setInputFiles({ name: 'yard.dxf', mimeType: 'application/dxf', buffer: Buffer.from(dxf) });
+  await boxOnSheet(page, -50, -50, 6050, 4050);
+  await page.locator('#detectBtn').click();
+  await expect(page.locator('.toast')).toContainText('named: Yard');
+  await expect(page.locator('.toast')).not.toContainText('closed room');
+  await page.locator('#techBtn').click();
+  await expect(page.locator('#techView svg')).toContainText('not built');
+  await expect(page.locator('#techView svg')).toContainText('0 rooms · 0.0 m² net');
+  expect(errors).toEqual([]);
+});
+
 test('floor plan import reads door and fixture symbols', async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto('studio/');

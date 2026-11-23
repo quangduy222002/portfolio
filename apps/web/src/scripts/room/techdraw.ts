@@ -8,7 +8,20 @@
  */
 import { FURNITURE } from './catalog';
 import { linework, type Arc, type Seg } from './export';
-import { PARAPET, PLINTH, SLAB, storeyHeight, storeysOf, OPEN_ROOM, type Item, type Plan, type Vec2 } from './plan';
+import {
+  isFloorArea,
+  OPEN_ROOM,
+  OUTSIDE_ROOM,
+  PARAPET,
+  PLINTH,
+  SHAFT_ROOM,
+  SLAB,
+  storeyHeight,
+  storeysOf,
+  type Item,
+  type Plan,
+  type Vec2,
+} from './plan';
 
 /** The client's drawing laid under a floor, placed in plan metres. */
 export interface Underlay {
@@ -318,15 +331,26 @@ export function floorSheet(p: Plan, o: SheetOptions): string {
     o2.push(`<polygon points="${pts.map(P).join(' ')}" fill="${INK}" stroke="${INK}" stroke-width="1"/>`);
   }
 
-  // Room names, areas, and the floor level in each room.
+  // Room names, areas, and the floor level in each room. A shaft is crossed out (a void through the floors, no
+  // area); the yard is outside the building, at yard level.
   for (const { room, name } of d.rooms) {
     const [cx, cz] = room.centroid;
+    if (SHAFT_ROOM.test(name)) {
+      const xs = room.poly.map((q) => q[0]);
+      const zs = room.poly.map((q) => q[1]);
+      const [a, b] = [Math.min(...xs), Math.max(...xs)];
+      const [c, e] = [Math.min(...zs), Math.max(...zs)];
+      o2.push(`<path d="M${P([a, c])}L${P([b, e])}M${P([b, c])}L${P([a, e])}" stroke="${THIN}" stroke-width="0.6"/>`);
+      continue;
+    }
     const small = room.area < 3;
+    const yard = OUTSIDE_ROOM.test(name);
     o2.push(
       `<text x="${f1(U(cx))}" y="${f1(U(cz) - 6)}" font-size="${fs(small ? 9 : 13)}" font-weight="600" fill="${INK}" text-anchor="middle">${esc(name.toUpperCase())}</text>`,
-      `<text x="${f1(U(cx))}" y="${f1(U(cz) + 8)}" font-size="${fs(small ? 8 : 10)}" fill="${THIN}" text-anchor="middle">S = ${room.area.toFixed(1)} m²</text>`,
+      `<text x="${f1(U(cx))}" y="${f1(U(cz) + 8 * TS)}" font-size="${fs(small ? 8 : 10)}" fill="${THIN}" text-anchor="middle">${yard ? 'not built · ' : ''}S = ${room.area.toFixed(1)} m²</text>`,
     );
-    if (!small) o2.push(levelMark(cx, cz + 0.32, o.level - (OPEN_ROOM.test(name) ? 0.05 : 0)));
+    const level = yard && o.ground ? -PLINTH : o.level - (OPEN_ROOM.test(name) ? 0.05 : 0);
+    if (!small) o2.push(levelMark(cx, cz + 0.32 * TS, level));
   }
   if (o.ground) o2.push(levelMark(B.x0 + 0.25, B.z1 + 0.25, -PLINTH));
 
@@ -355,11 +379,12 @@ export function floorSheet(p: Plan, o: SheetOptions): string {
 
   // Title block: name, level, floor height, scale; north arrow and a scale bar.
   const tb = bottom - titleH + 0.2;
-  const area = d.rooms.reduce((s, r) => s + r.room.area, 0);
+  const counted = d.rooms.filter((r) => isFloorArea(r.name));
+  const area = counted.reduce((s, r) => s + r.room.area, 0);
   o2.push(
     `<line x1="${f1(U(left + 0.3))}" y1="${f1(U(tb - 0.12))}" x2="${f1(U(right - 0.3))}" y2="${f1(U(tb - 0.12))}" stroke="${INK}" stroke-width="0.8"/>`,
     `<text x="${f1(U(left + 0.3))}" y="${f1(U(tb + 0.22 * TS))}" font-size="${fs(20)}" font-weight="700" fill="${INK}">${esc(o.title.toUpperCase())}</text>`,
-    `<text x="${f1(U(left + 0.3))}" y="${f1(U(tb + 0.5 * TS))}" font-size="${fs(11)}" fill="${THIN}">Level ${levelText(o.level)} · floor to floor ${(o.height * 1000).toFixed(0)} mm · ${d.rooms.length} rooms · ${area.toFixed(1)} m² net · scale 1:100 · dimensions in mm</text>`,
+    `<text x="${f1(U(left + 0.3))}" y="${f1(U(tb + 0.5 * TS))}" font-size="${fs(11)}" fill="${THIN}">Level ${levelText(o.level)} · floor to floor ${(o.height * 1000).toFixed(0)} mm · ${counted.length} rooms · ${area.toFixed(1)} m² net · scale 1:100 · dimensions in mm</text>`,
   );
   const bar = right - 0.6 - TS;
   o2.push(

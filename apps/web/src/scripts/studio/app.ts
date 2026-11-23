@@ -6,7 +6,7 @@ import { $, toast } from '../../lib/dom/chrome';
 import { startRoomcraft, type DrawingShot, type RoomcraftApi, type RoomcraftOptions } from '../room/app';
 import type { SheetFloor } from '../room/ai';
 import { saveFile } from '../../lib/claude-host';
-import { findRooms, storeyHeight, storeysOf, type Plan, type Room } from '../room/plan';
+import { findRooms, isFloorArea, roomName, storeyHeight, storeysOf, type Plan, type Room } from '../room/plan';
 import type { Underlay } from '../room/techdraw';
 import { inRegion, scaleFromDimensions, type Drawing, type Region } from './drawing';
 import { detectWalls } from './detect';
@@ -903,8 +903,13 @@ export async function startStudio(gl: boolean) {
     }
     const found = findSymbols(source, region);
     const furnished = furnish(res.plan, found);
-    const named = [...new Set(nameRooms(res.plan, source, region, found).values())];
     const floorName = floorNameOverride ?? floorLabel(source, region);
+    // A floor titled as the ground floor ("Tầng 1", "Trệt"). Not simply the first one built: a flat's plan is an upper
+    // floor, and its balcony is a balcony.
+    const ground = /^(t[aầ]ng ?1|tr[eệ]t|ground( floor)?|first floor|level ?1)$/i.test(
+      (floorName ?? '').trim().normalize('NFC'),
+    );
+    const named = [...new Set(nameRooms(res.plan, source, region, found, ground).values())];
     floorNameOverride = null;
     underlayOn = true;
     $('drawingBtn').setAttribute('aria-pressed', 'true');
@@ -936,7 +941,7 @@ export async function startStudio(gl: boolean) {
       builtFloors.set(0, { d: drawing, r: region, k: drawing.mmPerUnit, dx: 0, dz: 0 });
       api.setPlan(res.plan);
     }
-    const rooms = findRooms(res.plan).length;
+    const rooms = findRooms(res.plan).filter((r) => isFloorArea(roomName(res.plan, r))).length;
     setStage('workspace');
     toast(
       `Found ${count(res.plan.walls.length, 'wall', 'walls')}, ${count(res.plan.openings.length, 'door or window', 'doors and windows')}${
