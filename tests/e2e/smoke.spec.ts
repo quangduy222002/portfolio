@@ -616,6 +616,72 @@ test('floor plan import names the front yard and leaves it out of the rooms', as
   expect(errors).toEqual([]);
 });
 
+test('floor plan import stands a spiral stair where it is drawn', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('studio/');
+  await expect(page.locator('#viewer.ready')).toBeAttached({ timeout: 60_000 });
+  const line = (x1: number, y1: number, x2: number, y2: number, layer = 'WALL') => [
+    '0',
+    'LINE',
+    '8',
+    layer,
+    '10',
+    x1,
+    '20',
+    y1,
+    '11',
+    x2,
+    '21',
+    y2,
+  ];
+  const rect = (x0: number, y0: number, x1: number, y1: number) => [
+    ...line(x0, y0, x1, y0),
+    ...line(x1, y0, x1, y1),
+    ...line(x1, y1, x0, y1),
+    ...line(x0, y1, x0, y0),
+  ];
+  const circle = (x: number, y: number, r: number) => ['0', 'CIRCLE', '8', 'STAIR', '10', x, '20', y, '40', r];
+  // A spiral stair Ø2.4 m round a column, eight treads drawn over 140° (the rest is above the cut).
+  const treads = Array.from({ length: 8 }, (_, i) => {
+    const a = (i * 20 * Math.PI) / 180;
+    return line(
+      4000 + Math.cos(a) * 150,
+      2500 + Math.sin(a) * 150,
+      4000 + Math.cos(a) * 1200,
+      2500 + Math.sin(a) * 1200,
+      'STAIR',
+    );
+  }).flat();
+  const dxf = [
+    ...['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', '4', '0', 'ENDSEC'],
+    ...['0', 'SECTION', '2', 'ENTITIES'],
+    ...rect(0, 0, 8000, 5000),
+    ...rect(200, 200, 7800, 4800),
+    ...circle(4000, 2500, 1200),
+    ...circle(4000, 2500, 150),
+    ...treads,
+    ...['0', 'ENDSEC', '0', 'EOF'],
+  ].join('\n');
+  await page
+    .locator('#file')
+    .setInputFiles({ name: 'spiral.dxf', mimeType: 'application/dxf', buffer: Buffer.from(dxf) });
+  await boxOnSheet(page, -50, -50, 8050, 5050);
+  await page.locator('#detectBtn').click();
+  await expect(page.locator('.toast')).toContainText('Found 4 walls');
+  const spiral = () =>
+    page.evaluate(() =>
+      (JSON.parse(localStorage.getItem('floorwise.plan') ?? '{}').items ?? []).find((it: { type: string }) =>
+        it.type.startsWith('stairsSpiral'),
+      ),
+    );
+  await expect.poll(async () => (await spiral())?.type).toBe('stairsSpiralL');
+  const stair = await spiral();
+  // At the drawn centre: 4 m in, 2.5 m down from the top of the box.
+  expect(Math.abs(stair.x - 4.05)).toBeLessThan(0.1);
+  expect(Math.abs(stair.z - 2.55)).toBeLessThan(0.1);
+  expect(errors).toEqual([]);
+});
+
 test('floor plan import reads door and fixture symbols', async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto('studio/');

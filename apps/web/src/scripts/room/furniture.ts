@@ -564,6 +564,9 @@ const builders: Record<string, Build> = {
   stairs(add, m, w, d, h, look) {
     flight(add, m, look, { x0: -w / 2, x1: w / 2, z0: d / 2, z1: -d / 2, axis: 'z', y0: 0, y1: h, steps: 18 });
   },
+  stairsSpiral: spiralStair,
+  stairsSpiralM: spiralStair,
+  stairsSpiralL: spiralStair,
   stairsU(add, m, w, d, h, look) {
     // Up the left half from the front to a landing across the back, then back down the right half to the front:
     // the floor above is reached at the front, beside the foot of the stair.
@@ -660,6 +663,49 @@ function diningChair(_add: Add, m: Material, look: Look, x: number, z: number, r
   add(rbox(0.44, 0.36, 0.04, 0.02), look.style.legs === 'rattan' ? shared.rattan : m, 0, 0.68, -0.19);
   const legMat = look.style.legs === 'metal' ? look.metal : look.wood;
   for (const lx of [-1, 1]) for (const lz of [-1, 1]) add(cyl(0.017, 0.013, 0.44), legMat, lx * 0.18, 0.22, lz * 0.17);
+}
+
+/**
+ * A spiral stair round a central column: wedge treads climbing from the front (+z), turning towards +x, one storey
+ * high, with balusters on the outer edge and a handrail along their tops.
+ */
+function spiralStair(add: Add, m: Material, w: number, _d: number, h: number, look: Look) {
+  const R = w / 2;
+  const core = Math.max(0.08, R * 0.12);
+  const steps = Math.max(12, Math.round(h / 0.19));
+  const turn = Math.min((24 * Math.PI) / 180, (330 * Math.PI) / 180 / steps);
+  const rise = h / steps;
+  add(cyl(core, core, h + 0.9, 20), look.metal, 0, (h + 0.9) / 2, 0);
+  const len = R - core;
+  const mid = core + len / 2;
+  let prev: Vector3 | null = null;
+  for (let i = 0; i < steps; i++) {
+    const a = (i + 0.5) * turn;
+    const top = (i + 1) * rise;
+    // A tread as wide at its outer end as the turn it covers, a little overlapping the next.
+    const tread = add(
+      rbox(len, 0.04, Math.max(0.12, R * turn * 0.75), 0.004),
+      m,
+      Math.sin(a) * mid,
+      top - 0.02,
+      Math.cos(a) * mid,
+    );
+    tread.rotation.y = a + Math.PI / 2;
+    const post = new Vector3(Math.sin(a) * (R - 0.05), top + 0.9, Math.cos(a) * (R - 0.05));
+    add(cyl(0.012, 0.012, 0.9, 8), look.metal, post.x, top + 0.45, post.z);
+    if (prev) {
+      const dir = post.clone().sub(prev);
+      const rail = add(
+        cyl(0.02, 0.02, dir.length(), 8),
+        look.wood,
+        (post.x + prev.x) / 2,
+        (post.y + prev.y) / 2,
+        (post.z + prev.z) / 2,
+      );
+      rail.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), dir.normalize());
+    }
+    prev = post;
+  }
 }
 
 /**

@@ -61,6 +61,7 @@ import {
   tidy,
   uid,
   wallEnds,
+  type Item,
   type Plan,
   type Room,
   type Vec2,
@@ -755,6 +756,19 @@ ${
   });
 
   /* ---------- Claude: questions, new objects, reading the drawing ---------- */
+  /**
+   * A stair Claude reads where the plan already has one (found from the drawing's geometry, which places it exactly):
+   * left out, so the house doesn't get a second stair beside the first.
+   */
+  const doubledStair = (it: Item) => {
+    const custom = it.type.startsWith('custom:') ? (plan.customs?.[it.type.slice(7)]?.name ?? '') : '';
+    const stair = (!!FURNITURE[it.type]?.opensAbove && it.type !== 'void') || /stair|thang/i.test(custom);
+    if (!stair) return false;
+    return plan.items.some(
+      (o) =>
+        o !== it && o.type !== 'void' && !!FURNITURE[o.type]?.opensAbove && Math.hypot(o.x - it.x, o.z - it.z) < 2.5,
+    );
+  };
   const brain = (): Brain | null => hostAi ?? (apiKey || null);
   const needBrain = (status: HTMLElement) => {
     const b = brain();
@@ -1220,6 +1234,7 @@ ${
       let items = 0;
       for (const f of review.found) {
         const it = { id: uid('i'), ...f.item, x: f.item.x + shot.dx, z: f.item.z + shot.dz };
+        if (doubledStair(it)) continue;
         if (!fitIntoRooms(it, now)) continue;
         plan.items.push(it);
         items++;
@@ -1248,6 +1263,7 @@ ${
       let added = 0;
       for (const f of out.found) {
         const it = { id: uid('i'), ...f.item, x: f.item.x + shot.dx, z: f.item.z + shot.dz };
+        if (doubledStair(it)) continue;
         if (!fitIntoRooms(it, rooms)) continue;
         plan.items.push(it);
         added++;

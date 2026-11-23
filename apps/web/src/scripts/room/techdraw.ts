@@ -94,6 +94,30 @@ function stairLines(it: Item): { outline: Vec2[]; treads: Seg[]; walk: Vec2[] } 
   const steps = (a: number, b: number, n: number) =>
     Array.from({ length: n - 1 }, (_, i) => a + ((b - a) * (i + 1)) / n);
   let walk: Vec2[];
+  if (/^stairsSpiral/.test(it.type)) {
+    const R = w / 2;
+    const core = Math.max(0.08, R * 0.12);
+    const steps = Math.max(4, Math.round(def.h / 0.19));
+    const turn = Math.min((24 * Math.PI) / 180, (330 * Math.PI) / 180 / steps);
+    const circle = (r: number) =>
+      Array.from({ length: 33 }, (_, i) =>
+        at([Math.sin((i / 32) * Math.PI * 2) * r, Math.cos((i / 32) * Math.PI * 2) * r]),
+      );
+    const rim = circle(R);
+    for (let i = 0; i < 32; i++) treads.push([rim[i]!, rim[i + 1]!]);
+    const hub = circle(core);
+    for (let i = 0; i < 32; i++) treads.push([hub[i]!, hub[i + 1]!]);
+    for (let i = 0; i <= steps; i++) {
+      const a = i * turn;
+      treads.push([at([Math.sin(a) * core, Math.cos(a) * core]), at([Math.sin(a) * R, Math.cos(a) * R])]);
+    }
+    const mid = (R + core) / 2;
+    walk = Array.from({ length: 17 }, (_, i) => {
+      const a = 0.3 * turn + ((steps - 0.6) * turn * i) / 16;
+      return at([Math.sin(a) * mid, Math.cos(a) * mid]);
+    });
+    return { outline: [], treads, walk };
+  }
   if (it.type === 'stairsU') {
     const landing = Math.min(1.1, d / 3);
     const back = -d / 2 + landing;

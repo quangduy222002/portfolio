@@ -12,6 +12,7 @@ import { inRegion, scaleFromDimensions, type Drawing, type Region } from './draw
 import { detectWalls } from './detect';
 import { alignTo, floorLabel } from './floors';
 import { nameRooms } from './rooms';
+import { findSpiralStairs, placeSpirals } from './stairs';
 import { findSymbols, furnish } from './symbols';
 import { findViews, type PlanView } from './views';
 
@@ -902,7 +903,7 @@ export async function startStudio(gl: boolean) {
       return;
     }
     const found = findSymbols(source, region);
-    const furnished = furnish(res.plan, found);
+    const furnished = furnish(res.plan, found) + placeSpirals(res.plan, findSpiralStairs(source, region));
     const floorName = floorNameOverride ?? floorLabel(source, region);
     // A floor titled as the ground floor ("Tầng 1", "Trệt"). Not simply the first one built: a flat's plan is an upper
     // floor, and its balcony is a balcony.

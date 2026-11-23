@@ -647,6 +647,19 @@ export function fitIntoRooms(it: Item, rooms: Room[], reach = 1.5): boolean {
 }
 
 /** A hole in a floor: its outline, and the edge (index of corner → next corner) left open where a stair arrives. */
+/** A spiral stair (round in plan). */
+export const isSpiral = (type: string) => /^stairsSpiral/.test(type);
+
+/** The outline of the hole a stair needs in the floor above: round over a spiral stair. */
+function stairHole(it: Item): Vec2[] {
+  if (!isSpiral(it.type)) return itemCorners(it);
+  const r = (FURNITURE[it.type]?.w ?? 1.6) / 2 + 0.05;
+  return Array.from({ length: 20 }, (_, i) => {
+    const a = (i / 20) * Math.PI * 2;
+    return [it.x + Math.cos(a) * r, it.z + Math.sin(a) * r] as Vec2;
+  });
+}
+
 export interface FloorOpening {
   poly: Vec2[];
   open?: number;
@@ -667,7 +680,11 @@ export function floorOpenings(floors: { storey: Storey; plan: Plan }[], i: numbe
     .sort((a, b) => b.storey.elevation - a.storey.elevation)[0];
   for (const it of below?.plan.items ?? [])
     if (FURNITURE[it.type]?.opensAbove)
-      out.push({ poly: itemCorners(it), open: it.type === 'stairsL' ? 1 : it.type === 'stairsU' ? 2 : 0 });
+      out.push({
+        poly: stairHole(it),
+        // A spiral is reached at the end of its turn: no railing on its rim would leave the way off it open.
+        open: it.type === 'stairsL' ? 1 : it.type === 'stairsU' ? 2 : isSpiral(it.type) ? spiralExit(it) : 0,
+      });
   return out;
 }
 
@@ -677,10 +694,25 @@ export function ceilingOpenings(floors: { storey: Storey; plan: Plan }[], i: num
   if (!here) return [];
   const out: FloorOpening[] = here.plan.items
     .filter((it) => FURNITURE[it.type]?.opensAbove)
-    .map((it) => ({ poly: itemCorners(it) }));
+    .map((it) => ({ poly: stairHole(it) }));
   const up = floors
     .filter((f) => f.storey.elevation > here.storey.elevation)
     .sort((a, b) => a.storey.elevation - b.storey.elevation)[0];
   for (const it of up?.plan.items ?? []) if (it.type === 'void') out.push({ poly: itemCorners(it) });
   return out;
+}
+
+/** The rim edge of a spiral's hole where its top tread arrives (the turn it covers, from the front, towards +x). */
+function spiralExit(it: Item): number {
+  const def = FURNITURE[it.type];
+  const h = def?.h ?? 3.3;
+  const steps = Math.max(12, Math.round(h / 0.19));
+  const turn = Math.min((24 * Math.PI) / 180, (330 * Math.PI) / 180 / steps);
+  // Local angle from +z towards +x, then into plan space by the item's rotation (as itemCorners turns it).
+  const local = steps * turn;
+  const r = (it.rot * Math.PI) / 180;
+  const [lx, lz] = [Math.sin(local), Math.cos(local)];
+  const [px, pz] = [lx * Math.cos(r) - lz * Math.sin(r), lx * Math.sin(r) + lz * Math.cos(r)];
+  const a = Math.atan2(pz, px);
+  return Math.floor(((((a / (Math.PI * 2)) % 1) + 1) % 1) * 20) % 20;
 }

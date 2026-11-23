@@ -953,8 +953,8 @@ export class PlanEditor {
     c.rotate(it.rot * DEG);
     const w = def.w * s;
     const d = def.d * s;
-    if (it.type === 'stairs' || it.type === 'stairsL' || it.type === 'void') {
-      paintStair(c, it.type, w, d, s, selected);
+    if (/^stairs/.test(it.type) || it.type === 'void') {
+      paintStair(c, it.type, w, d, s, selected, def.h);
       c.restore();
       return;
     }
@@ -1016,7 +1016,15 @@ export class PlanEditor {
  * Plan symbol of a stair (treads, a walking line and an UP arrow from the bottom step) or a double-height void
  * (dashed and crossed), in the item's own frame: w × d pixels, front (bottom step) towards +z.
  */
-function paintStair(c: CanvasRenderingContext2D, type: string, w: number, d: number, s: number, selected: boolean) {
+function paintStair(
+  c: CanvasRenderingContext2D,
+  type: string,
+  w: number,
+  d: number,
+  s: number,
+  selected: boolean,
+  h = 3.3,
+) {
   c.strokeStyle = selected ? '#2563eb' : '#475467';
   c.fillStyle = '#ffffff';
   c.lineWidth = selected ? 2 : 1;
@@ -1054,7 +1062,44 @@ function paintStair(c: CanvasRenderingContext2D, type: string, w: number, d: num
     c.stroke();
   };
   const arrow: [number, number][] = [];
-  if (type === 'stairs') {
+  if (/^stairsSpiral/.test(type)) {
+    // Round: treads radiating from the central column, the walking line along the middle of the turn.
+    const R = w / 2;
+    const core = Math.max(0.08 * s, R * 0.12);
+    const steps = Math.max(12, Math.round(h / 0.19));
+    const turn = Math.min((24 * Math.PI) / 180, (330 * Math.PI) / 180 / steps);
+    c.beginPath();
+    c.arc(0, 0, R, 0, Math.PI * 2);
+    c.fill();
+    c.stroke();
+    c.beginPath();
+    c.arc(0, 0, core, 0, Math.PI * 2);
+    c.stroke();
+    c.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const a = i * turn;
+      c.moveTo(Math.sin(a) * core, Math.cos(a) * core);
+      c.lineTo(Math.sin(a) * R, Math.cos(a) * R);
+    }
+    c.stroke();
+    const mid = (R + core) / 2;
+    for (let i = 0; i <= 16; i++) {
+      const a = 0.3 * turn + ((steps - 0.6) * turn * i) / 16;
+      arrow.push([Math.sin(a) * mid, Math.cos(a) * mid]);
+    }
+  } else if (type === 'stairsU') {
+    const landing = Math.min(1.1 * s, d / 3);
+    treads(-w / 2, d / 2, 0, -d / 2 + landing, 9, true);
+    c.fillRect(-w / 2, -d / 2, w, landing);
+    c.strokeRect(-w / 2, -d / 2, w, landing);
+    treads(0, -d / 2 + landing, w / 2, d / 2, 9, true);
+    arrow.push(
+      [-w / 4, d / 2 - 0.15 * s],
+      [-w / 4, -d / 2 + landing / 2],
+      [w / 4, -d / 2 + landing / 2],
+      [w / 4, d / 2 - 0.25 * s],
+    );
+  } else if (type === 'stairs') {
     treads(-w / 2, d / 2, w / 2, -d / 2, 18, true);
     arrow.push([0, d / 2 - 0.15 * s], [0, -d / 2 + 0.25 * s]);
   } else {
