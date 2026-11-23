@@ -26,6 +26,8 @@ export interface FurnitureDef {
   light?: { kind: 'spot' | 'point'; y: number; power: number };
   /** A stair (or lift) rising to the floor above, which is opened over it. */
   opensAbove?: boolean;
+  /** Stands the full height of its floor (a structural column), whatever that height is. */
+  fullHeight?: true;
   /** Defined by Claude for this plan (custom.ts), not part of the built-in catalogue. */
   custom?: true;
 }
@@ -530,6 +532,26 @@ export const FURNITURE: Record<string, FurnitureDef> = {
     role: 'wood',
     opensAbove: true,
   },
+  column: {
+    name: 'Column 220 × 220 (reinforced concrete)',
+    w: 0.22,
+    d: 0.22,
+    h: 3,
+    colors: ['#c9c6c0'],
+    group: 'Structure',
+    role: 'fixed',
+    fullHeight: true,
+  },
+  columnLarge: {
+    name: 'Column 300 × 300 (reinforced concrete)',
+    w: 0.3,
+    d: 0.3,
+    h: 3,
+    colors: ['#c9c6c0'],
+    group: 'Structure',
+    role: 'fixed',
+    fullHeight: true,
+  },
   void: {
     name: 'Double-height void (opening to the floor below)',
     w: 2.4,
@@ -572,6 +594,7 @@ export const GROUPS = [
   'Lighting',
   'Decor',
   'Stairs',
+  'Structure',
 ];
 
 export interface Finish {

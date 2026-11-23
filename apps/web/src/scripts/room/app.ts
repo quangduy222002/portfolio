@@ -40,6 +40,7 @@ import { onModelLoaded } from './furniture';
 import { createLook } from './look';
 import { designLighting, kelvinColor } from './lighting';
 import {
+  PLINTH,
   WALL_HEIGHT,
   addStorey,
   ceilingOpenings,
@@ -1298,7 +1299,8 @@ async function setupThree(
     const list = storeysOf(p);
     const base = list.find((f) => f.active)!.storey.elevation;
     const lowest = Math.min(...list.map((f) => f.storey.elevation));
-    ground.position.y = lowest - base - 0.002;
+    // The yard is a plinth's height below the ground floor.
+    ground.position.y = lowest - base - PLINTH - 0.002;
     list.forEach((f, i) => {
       if (f.active) return;
       let h = others.get(i);
@@ -1314,6 +1316,9 @@ async function setupThree(
       // Walls run up to the floor above, so the storeys read as one building.
       const above = list.filter((g) => g.storey.elevation > f.storey.elevation).map((g) => g.storey.elevation);
       h.wallHeight = above.length ? Math.min(...above) - f.storey.elevation : (f.storey.height ?? WALL_HEIGHT);
+      h.ground = f.storey.elevation <= lowest + 1e-6;
+      h.top = !above.length;
+      h.setRoofShown(mode === 'orbit');
       h.syncStructure(f.plan, findRooms(f.plan), floorOpenings(list, i), ceilingOpenings(list, i));
       h.syncItems(f.plan);
       h.root.position.y = f.storey.elevation - base;
@@ -1462,6 +1467,9 @@ async function setupThree(
       b.setAttribute('aria-pressed', String(b.dataset.view === m));
     viewer.classList.toggle('walking', m === 'walk');
     house.setCeilings(m === 'walk');
+    // The roof and its parapets are part of the view from outside; the cut-away and walk views look in.
+    house.setRoofShown(m === 'orbit');
+    for (const h of others.values()) h.setRoofShown(m === 'orbit');
     // Ceiling and wall fittings would float over the cut-away walls of the dollhouse: show them in orbit and walk.
     house.setFixturesShown(m !== 'dollhouse');
     if (m === 'walk' && was !== 'walk') {
@@ -1582,6 +1590,9 @@ async function setupThree(
       // Walls rise to the floor above (or the top floor's own height), so a 2.6 m mezzanine reads lower than a 3.45 m
       // top floor.
       house.wallHeight = storeyHeight(p, here);
+      const me = floors[here]!.storey.elevation;
+      house.ground = floors.every((f) => f.storey.elevation >= me - 1e-6);
+      house.top = !floors.some((f) => f.storey.elevation > me + 1e-6);
       const rebuilt = house.syncStructure(p, getRooms(), floorOpenings(floors, here), ceilingOpenings(floors, here));
       // Furniture and the other floors are drawn on their own: a failure there leaves the walls and floors standing.
       try {

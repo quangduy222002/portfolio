@@ -553,6 +553,13 @@ const builders: Record<string, Build> = {
   art(add, m, w, _d, h, look) {
     artwork(add, look, m, w, h - 0.75, 0.75);
   },
+  /* Structure: a concrete column, floor to slab. */
+  column(add, _m, w, d, h) {
+    add(rbox(w, h, d, 0.004), std('#c9c6c0', 0.95), 0, h / 2, 0);
+  },
+  columnLarge(add, _m, w, d, h) {
+    add(rbox(w, h, d, 0.004), std('#c9c6c0', 0.95), 0, h / 2, 0);
+  },
   /* Stairs climb from the front (+z) of their footprint to the back, one storey high. */
   stairs(add, m, w, d, h, look) {
     flight(add, m, look, { x0: -w / 2, x1: w / 2, z0: d / 2, z1: -d / 2, axis: 'z', y0: 0, y1: h, steps: 18 });
@@ -906,7 +913,7 @@ function buildPiece(type: string, color?: string, styleId?: string, rise?: numbe
   const build = builders[type];
   const parts = CUSTOM_PARTS.get(type);
   // A stair climbs to the floor above, whatever height that floor is at (2.6 m for a mezzanine, 4.2 m in a villa).
-  const climbs = !!def?.opensAbove && !!rise && Number.isFinite(rise) && rise > 1.5;
+  const climbs = !!(def?.opensAbove || def?.fullHeight) && !!rise && Number.isFinite(rise) && rise > 1.5;
   if (parts) {
     buildCustom(parts, look.sub(0, 0, 0));
     if (climbs) g.scale.y = rise! / def!.h;

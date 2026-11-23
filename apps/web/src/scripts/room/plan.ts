@@ -109,6 +109,14 @@ export interface Room {
 const DEG = Math.PI / 180;
 export const WALL_HEIGHT = 2.7;
 export const RAIL_HEIGHT = 1.1;
+/** The shell of the building (TCVN practice for a Vietnamese house): ground floor raised on a plinth above the
+ * yard, reinforced-concrete slabs, and a parapet round a flat roof. Metres. */
+export const PLINTH = 0.2;
+export const SLAB = 0.12;
+export const PARAPET = 0.55;
+/** Rooms open to the sky: their walls are parapets, not full-height walls, and they get no roof. */
+export const OPEN_ROOM =
+  /balcony|ban c[oô]ng|s[aâ]n th[uư][oợ]ng|terrace|s[aâ]n (sau|tr[uư][oớ]c|v[uư][oờ]n)|logia|l[oô] gia/i;
 export const DOOR_HEIGHT = 2.1;
 export const WINDOW_SILL = 0.9;
 export const WINDOW_TOP = 2.1;

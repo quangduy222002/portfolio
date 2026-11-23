@@ -8,6 +8,7 @@ import {
   BufferGeometry,
   Color,
   DoubleSide,
+  ExtrudeGeometry,
   Float32BufferAttribute,
   Group,
   PointLight,
@@ -22,18 +23,24 @@ import {
   SpotLight,
   Vector2,
   type Material,
+  type Object3D,
   type Texture,
 } from 'three';
 import { FLOORS, FURNITURE, WALLS, type Finish } from './catalog';
 import { buildFurniture, setFixtureGlow } from './furniture';
 import {
   DOOR_HEIGHT,
+  OPEN_ROOM,
+  PARAPET,
+  PLINTH,
   RAIL_HEIGHT,
+  SLAB,
   WALL_HEIGHT,
   WINDOW_SILL,
   WINDOW_TOP,
   nodeMap,
   roomAt,
+  roomName,
   roomStyle,
   pointInPoly,
   type FloorOpening,
@@ -92,6 +99,14 @@ export class House {
   });
   private readonly skirting = new MeshStandardMaterial({ color: '#f4f3f0', roughness: 0.4 });
   private readonly handle = new MeshStandardMaterial({ color: '#c9ccd1', roughness: 0.3, metalness: 1 });
+  private readonly concrete = new MeshStandardMaterial({ color: '#c9c6c0', roughness: 0.95 });
+  private readonly band = new MeshStandardMaterial({ color: '#dfe2e6', roughness: 0.9 });
+  /** The roof slab and parapets, seen from outside (orbit) and hidden in the cut-away views. */
+  private roofParts: Object3D[] = [];
+  private roofShown = false;
+  /** This floor is the lowest (it stands on the plinth) / has no floor above (it carries the roof). */
+  ground = true;
+  top = true;
   /** Writes no colour or depth: the roof exists only in the shadow map. */
   private readonly roofMat = new MeshStandardMaterial({ colorWrite: false, depthWrite: false, side: DoubleSide });
   private readonly selection = new LineLoop(
@@ -145,6 +160,8 @@ export class House {
       p.openings,
       rooms.map((r) => [r.key, roomStyle(p, r)]),
       this.wallHeight,
+      this.ground,
+      this.top,
       below,
       above,
     ]);
@@ -157,7 +174,10 @@ export class House {
     this.structure.clear();
     this.walls = [];
     this.ceilings = [];
+    this.roofParts = [];
     const nodes = nodeMap(p);
+    const open = (r: Room | undefined) => !!r && OPEN_ROOM.test(roomName(p, r));
+    const base = this.ground ? PLINTH : 0;
 
     /* Floors and the shadow-only roof */
     // A hole goes in the room that holds its middle.
@@ -178,6 +198,31 @@ export class House {
       floor.receiveShadow = true;
       floor.userData.room = r.key;
       this.structure.add(floor);
+      // The structural floor under it: the slab (upper floors) or the raised ground-floor plinth.
+      const slab = new Mesh(
+        new ExtrudeGeometry(shape, { depth: this.ground ? PLINTH : SLAB, bevelEnabled: false }),
+        this.concrete,
+      );
+      slab.rotation.x = -Math.PI / 2;
+      slab.position.y = -(this.ground ? PLINTH : SLAB);
+      slab.receiveShadow = slab.castShadow = true;
+      this.structure.add(slab);
+      // A flat roof slab over the top floor's rooms (not over terraces and balconies, which are open to the sky).
+      if (this.top && !open(r)) {
+        const roofSlab = new Mesh(
+          new ExtrudeGeometry(new Shape(r.poly.map(([x, z]) => ({ x, y: -z }) as never)), {
+            depth: SLAB,
+            bevelEnabled: false,
+          }),
+          this.concrete,
+        );
+        roofSlab.rotation.x = -Math.PI / 2;
+        roofSlab.position.y = this.wallHeight;
+        roofSlab.castShadow = roofSlab.receiveShadow = true;
+        roofSlab.visible = this.roofShown;
+        this.roofParts.push(roofSlab);
+        this.structure.add(roofSlab);
+      }
       const roofShape = new Shape(r.poly.map(([x, z]) => ({ x, y: -z }) as never));
       roofShape.holes.push(...holesIn(r, above, -1));
       const roof = new Mesh(new ShapeGeometry(roofShape), this.roofMat);
@@ -242,6 +287,14 @@ export class House {
       // lintel soffits, joints between wall pieces); the top is the dark section cut seen in the dollhouse.
       const front = side(1);
       const back = side(-1);
+      // A wall with open sky (or nothing) on both sides is a parapet round a terrace or balcony, not a storey wall.
+      const roomOn = (s: number) =>
+        roomAt(rooms, [mid[0] + n[0] * s * (w.thick / 2 + 0.12), mid[1] + n[1] * s * (w.thick / 2 + 0.12)]);
+      const onFront = roomOn(1);
+      const onBack = roomOn(-1);
+      const outside = !onFront || !onBack;
+      const parapet = (!onFront || open(onFront)) && (!onBack || open(onBack)) && (open(onFront) || open(onBack));
+      const height = parapet ? RAIL_HEIGHT : this.wallHeight;
       const reveal = front !== this.exterior ? front : back;
       const mats: Material[] = [reveal, reveal, this.cap, reveal, front, back];
       const g = new Group();
@@ -270,6 +323,8 @@ export class House {
         .map((o) => ({ o, s: o.t * L - o.width / 2, e: o.t * L + o.width / 2 }))
         .sort((m1, m2) => m1.s - m2.s);
       const piece = (s: number, e: number, y0: number, y1: number) => {
+        // On the ground floor the walls stand on the plinth's edge, down to the yard.
+        if (y0 === 0) y0 = -base;
         if (e - s < 0.005 || y1 - y0 < 0.005) return;
         const geo = new BoxGeometry(e - s, y1 - y0, w.thick);
         metreUVs(geo, (s + e) / 2, (y0 + y1) / 2);
@@ -278,7 +333,7 @@ export class House {
         m.castShadow = m.receiveShadow = true;
         g.add(m);
         // Skirting boards along the foot of every face that looks into a room.
-        if (y0 === 0)
+        if (y0 <= 0)
           for (const k of [1, -1]) {
             if (mats[k === 1 ? 4 : 5] === this.exterior) continue;
             const sk = new Mesh(skirtingGeo(e - s), this.skirting);
@@ -289,11 +344,13 @@ export class House {
       };
       let cursor = -endA;
       for (const { o, s, e } of ops) {
-        piece(cursor, s, 0, this.wallHeight);
+        piece(cursor, s, 0, height);
         const glassDoor = o.kind === 'window' && !!o.tall;
         const top = o.kind === 'door' || glassDoor ? DOOR_HEIGHT : WINDOW_TOP;
         if (o.kind === 'window' && !glassDoor) piece(s, e, 0, WINDOW_SILL);
-        piece(s, e, top, this.wallHeight);
+        // A step up to the raised ground floor under an outside door.
+        else if (base && outside) piece(s, e, -base, -0.001);
+        piece(s, e, top, height);
         view.openings.push(
           this.opening(
             g,
@@ -308,7 +365,25 @@ export class House {
         );
         cursor = e;
       }
-      piece(cursor, L + endB, 0, this.wallHeight);
+      piece(cursor, L + endB, 0, height);
+      // Outside faces: a band where each upper floor's slab meets the facade, and the roof parapet on the top floor.
+      if (outside && !parapet) {
+        const k = !onFront ? 1 : -1;
+        if (!this.ground) {
+          const band = new Mesh(new BoxGeometry(L + endA + endB, 0.2, 0.02), this.band);
+          band.position.set((endB - endA) / 2, -0.04, k * (w.thick / 2 + 0.01));
+          band.receiveShadow = true;
+          g.add(band);
+        }
+        if (this.top) {
+          const wall = new Mesh(new BoxGeometry(L + endA + endB, SLAB + PARAPET, w.thick), this.exterior);
+          wall.position.set((endB - endA) / 2, this.wallHeight + (SLAB + PARAPET) / 2, 0);
+          wall.castShadow = wall.receiveShadow = true;
+          wall.visible = this.roofShown;
+          this.roofParts.push(wall);
+          g.add(wall);
+        }
+      }
       this.walls.push(view);
     }
     if (Number.isFinite(minX)) {
@@ -426,6 +501,12 @@ export class House {
     add(L - 0.04, RAIL_HEIGHT - kerb - 0.1, 0.012, this.glass, mid, (RAIL_HEIGHT + kerb - 0.05) / 2);
   }
 
+  /** Shows the roof slab and parapets (the view from outside), or hides them to look into the floor. */
+  setRoofShown(on: boolean) {
+    this.roofShown = on;
+    for (const r of this.roofParts) r.visible = on;
+  }
+
   setCeilings(on: boolean) {
     this.showCeilings = on;
     for (const c of this.ceilings) c.visible = on;
@@ -436,7 +517,8 @@ export class House {
     const seen = new Set<string>();
     for (const it of p.items) {
       seen.add(it.id);
-      const rise = FURNITURE[it.type]?.opensAbove ? this.wallHeight : undefined;
+      const def0 = FURNITURE[it.type];
+      const rise = def0?.opensAbove || def0?.fullHeight ? this.wallHeight : undefined;
       const sig = `${it.type}:${it.color ?? ''}:${p.style ?? ''}:${rise ?? ''}`;
       let entry = this.items.get(it.id);
       if (!entry || entry.sig !== sig) {

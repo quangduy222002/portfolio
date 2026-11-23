@@ -13,7 +13,17 @@
  *    changes thickness, the offset centre lines are joined by a short cross piece.
  * It is a heuristic: the result is meant to be checked and fixed in the plan editor (or by the AI clean-up).
  */
-import { splitWall, tidy, uid, type Opening, type Plan, type PlanNode, type Wall } from '../room/plan';
+import {
+  findRooms,
+  pointInPoly,
+  splitWall,
+  tidy,
+  uid,
+  type Opening,
+  type Plan,
+  type PlanNode,
+  type Wall,
+} from '../room/plan';
 import { inRegion, type Drawing, type Region, type Segment } from './drawing';
 
 interface Line {
@@ -698,8 +708,87 @@ export function detectWalls(d: Drawing, region: Region): DetectResult {
     const isolated = degree.get(w.a) === 1 && degree.get(w.b) === 1;
     return !(isolated && Math.hypot(b.x - a.x, b.z - a.z) < 1);
   });
+  // Columns: small squares (18–42 cm) drawn in the wall lines with a diagonal or hatch inside, as plans draw
+  // reinforced-concrete columns. They become columns standing the floor's full height.
+  const rooms = findRooms(plan);
+  degree.clear();
+  for (const w of plan.walls) for (const id of [w.a, w.b]) degree.set(id, (degree.get(id) ?? 0) + 1);
+  /** Where a candidate column stands: in an outside wall, at a junction of walls, or not in the walls at all. */
+  const placeOf = (x: number, z: number, size: number): 'outside' | 'junction' | null => {
+    let found: 'outside' | 'junction' | null = null;
+    for (const w of plan.walls) {
+      const a = plan.nodes.find((m) => m.id === w.a)!;
+      const b = plan.nodes.find((m) => m.id === w.b)!;
+      const ex = b.x - a.x;
+      const ez = b.z - a.z;
+      const L = Math.hypot(ex, ez) || 1;
+      const t = Math.max(0, Math.min(1, ((x - a.x) * ex + (z - a.z) * ez) / (L * L)));
+      if (Math.hypot(a.x + ex * t - x, a.z + ez * t - z) > (w.thick ?? 0.15) / 2 + size / 2) continue;
+      const off = (w.thick ?? 0.15) / 2 + 0.15;
+      const mx = (a.x + b.x) / 2;
+      const mz = (a.z + b.z) / 2;
+      const inRoom = (k: number) =>
+        rooms.some((r) => pointInPoly([mx - (ez / L) * off * k, mz + (ex / L) * off * k], r.poly));
+      if (!inRoom(1) || !inRoom(-1)) return 'outside';
+      if ([a, b].some((m) => Math.hypot(m.x - x, m.z - z) < 0.45 && (degree.get(m.id) ?? 0) >= 3)) found = 'junction';
+    }
+    return found;
+  };
+  // Columns stand on the structural grid: those in the outside walls set it, and one inside the building counts only
+  // where it lines up with one of them (stair treads and fixtures drawn with diagonals don't).
+  const found = findColumns(HM, VM, hatch)
+    .map((c) => {
+      const x = (c.x - ox) / 1000;
+      const z = (oy - c.y) / 1000;
+      return { x, z, size: c.size, place: placeOf(x, z, c.size) };
+    })
+    .filter((c) => c.place);
+  const grid = found.filter((c) => c.place === 'outside');
+  for (const c of found) {
+    if (c.place !== 'outside' && !grid.some((g) => Math.abs(g.x - c.x) < 0.15 || Math.abs(g.z - c.z) < 0.15)) continue;
+    if (plan.items.some((it) => Math.hypot(it.x - c.x, it.z - c.z) < 0.15)) continue;
+    plan.items.push({ id: uid('i'), type: c.size > 0.26 ? 'columnLarge' : 'column', x: c.x, z: c.z, rot: 0 });
+  }
   tidy(plan);
   return { plan, walls: plan.walls.length, openings: plan.openings.length };
+}
+
+/**
+ * Squares and rectangles 150–600 mm a side with a diagonal or hatch stroke inside, as plans draw reinforced-concrete columns: a pair
+ * of horizontal lines (often the wall's own faces, running on through the column) and two vertical lines across them
+ * as far apart as they are.
+ */
+function findColumns(HM: Line[], VM: Line[], hatch: { x: number; y: number }[]) {
+  const out: { x: number; y: number; size: number }[] = [];
+  const verticals = [...VM].sort((m, n) => m.c - n.c);
+  for (let i = 0; i < HM.length; i++) {
+    const p = HM[i]!;
+    for (let j = i + 1; j < HM.length; j++) {
+      const q = HM[j]!;
+      const gap = q.c - p.c;
+      if (gap < 150) continue;
+      if (gap > 450) break;
+      const lo = Math.max(p.a, q.a) - 25;
+      const hi = Math.min(p.b, q.b) + 25;
+      if (hi - lo < 150) continue;
+      const across = verticals.filter((v) => v.c >= lo && v.c <= hi && v.a <= p.c + 25 && v.b >= q.c - 25);
+      for (const left of across) {
+        // Square or rectangular (a column as wide as the wall and up to three times as long).
+        const right = across.find((v) => {
+          const w = v.c - left.c;
+          return w >= 150 && w <= 600 && w <= gap * 3 && gap <= w * 3;
+        });
+        if (!right) continue;
+        const [a, b] = [left.c, right.c];
+        const cx = (a + b) / 2;
+        const cy = (p.c + q.c) / 2;
+        const inside = hatch.some((h) => h.x > a + 10 && h.x < b - 10 && h.y > p.c + 10 && h.y < q.c - 10);
+        if (!inside || out.some((o) => Math.hypot(o.x - cx, o.y - cy) < Math.max(gap, b - a))) continue;
+        out.push({ x: cx, y: cy, size: Math.max(gap, b - a) / 1000 });
+      }
+    }
+  }
+  return out;
 }
 
 /* ---------- Curved walls ---------- */

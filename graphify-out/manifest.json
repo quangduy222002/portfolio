@@ -552,15 +552,15 @@
     "semantic_hash": ""
   },
   "apps/web/src/scripts/room/app.ts": {
-    "mtime": 1795168032.0583317,
-    "seen": 1795168375.840698,
-    "ast_hash": "02a63cd3d9b1bdd51d9dd361a93cfe29",
+    "mtime": 1795402653.531059,
+    "seen": 1795403293.7287521,
+    "ast_hash": "7a90785e7a3966609f10ca128eb71b85",
     "semantic_hash": ""
   },
   "apps/web/src/scripts/room/catalog.ts": {
-    "mtime": 1795165539.5255878,
-    "seen": 1795166619.308862,
-    "ast_hash": "abc347b5682b65cb71d61ed40c254ff9",
+    "mtime": 1795402799.7049425,
+    "seen": 1795403293.7287529,
+    "ast_hash": "9e812fd525eed24c5e26f0e45ee5a0df",
     "semantic_hash": ""
   },
   "apps/web/src/scripts/room/editor2d.ts": {
@@ -570,21 +570,21 @@
     "semantic_hash": ""
   },
   "apps/web/src/scripts/room/furniture.ts": {
-    "mtime": 1795167985.6690626,
-    "seen": 1795168375.8407009,
-    "ast_hash": "c7f0bcff73fd72e8eafc4674363d6d82",
+    "mtime": 1795402799.7055964,
+    "seen": 1795403293.728756,
+    "ast_hash": "24d13cc1ee4b8d392b132182602db266",
     "semantic_hash": ""
   },
   "apps/web/src/scripts/room/house.ts": {
-    "mtime": 1795167985.6693957,
-    "seen": 1795168375.840702,
-    "ast_hash": "353c621e235c2821dbbc0766b7b5a579",
+    "mtime": 1795402799.7059226,
+    "seen": 1795403293.728757,
+    "ast_hash": "1b91603e52e17972a09ab5e26a79f6a7",
     "semantic_hash": ""
   },
   "apps/web/src/scripts/room/plan.ts": {
-    "mtime": 1795168030.9247468,
-    "seen": 1795168375.840706,
-    "ast_hash": "ac2c1b096e54c186f6cd7095e1847ce3",
+    "mtime": 1795403017.7068946,
+    "seen": 1795403293.7287612,
+    "ast_hash": "c903ed9522f60669cc948bbe3f35038e",
     "semantic_hash": ""
   },
   "apps/web/src/scripts/room/textures.ts": {
@@ -636,9 +636,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/scripts/studio/detect.ts": {
-    "mtime": 1795083427.1000352,
-    "seen": 1795084393.28606,
-    "ast_hash": "3315c5bca874767c0bd515d06461ab58",
+    "mtime": 1795402991.456181,
+    "seen": 1795403293.728766,
+    "ast_hash": "d2f97946fc7424518adf87f36b0735f5",
     "semantic_hash": ""
   },
   "apps/web/src/scripts/studio/drawing.ts": {
