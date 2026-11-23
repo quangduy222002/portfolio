@@ -686,6 +686,51 @@ test('floor plan import stands a spiral stair where it is drawn', async ({ page 
   expect(errors).toEqual([]);
 });
 
+test('floor plan import does not build a sofa along a wall as another wall', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('studio/');
+  await expect(page.locator('#viewer.ready')).toBeAttached({ timeout: 60_000 });
+  const line = (x1: number, y1: number, x2: number, y2: number) => [
+    '0',
+    'LINE',
+    '8',
+    'WALL',
+    '10',
+    x1,
+    '20',
+    y1,
+    '11',
+    x2,
+    '21',
+    y2,
+  ];
+  const rect = (x0: number, y0: number, x1: number, y1: number) => [
+    ...line(x0, y0, x1, y0),
+    ...line(x1, y0, x1, y1),
+    ...line(x1, y1, x0, y1),
+    ...line(x0, y1, x0, y0),
+  ];
+  const dxf = [
+    ...['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', '4', '0', 'ENDSEC'],
+    ...['0', 'SECTION', '2', 'ENTITIES'],
+    ...rect(0, 0, 6000, 4000),
+    ...rect(200, 200, 5800, 3800),
+    // A sofa against the top wall, drawn with the wall's own lines: its back 300 mm off the wall's face.
+    ...line(1500, 3500, 4000, 3500),
+    ...line(1500, 2900, 4000, 2900),
+    ...line(1500, 2900, 1500, 3800),
+    ...line(4000, 2900, 4000, 3800),
+    ...['0', 'ENDSEC', '0', 'EOF'],
+  ].join('\n');
+  await page
+    .locator('#file')
+    .setInputFiles({ name: 'sofa.dxf', mimeType: 'application/dxf', buffer: Buffer.from(dxf) });
+  await boxOnSheet(page, -50, -50, 6050, 4050);
+  await page.locator('#detectBtn').click();
+  await expect(page.locator('.toast')).toContainText('Found 4 walls');
+  expect(errors).toEqual([]);
+});
+
 test('floor plan import reads door and fixture symbols', async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto('studio/');

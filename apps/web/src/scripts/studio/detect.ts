@@ -652,11 +652,19 @@ export function detectWalls(d: Drawing, region: Region): DetectResult {
     curvePen !== null ? (c.pen ?? 0) >= curvePen - 1e-6 : !!c.layer && WALL_LAYER.test(c.layer),
   );
   const toPlanPt = (x: number, y: number) => [(x - ox) / 1000, (oy - y) / 1000] as const;
+  /** Pieces of curved walls: short by design, so never taken for stubs. */
+  const curved = new Set<string>();
   for (const cw of curvedWalls(wallChords)) {
+    // A curve shorter than a door leaf is a fixture's edge, not a wall.
+    const span = cw.pts.slice(1).reduce((t, p, i) => t + Math.hypot(p[0] - cw.pts[i]![0], p[1] - cw.pts[i]![1]), 0);
+    if (span < 400) continue;
     const ids = cw.pts.map((p) => nodeAt(...toPlanPt(...p)));
     for (let i = 1; i < ids.length; i++)
-      if (ids[i] !== ids[i - 1])
-        plan.walls.push({ id: uid('w'), a: ids[i - 1]!.id, b: ids[i]!.id, thick: Math.round(cw.t / 10) / 100 });
+      if (ids[i] !== ids[i - 1]) {
+        const id = uid('w');
+        curved.add(id);
+        plan.walls.push({ id, a: ids[i - 1]!.id, b: ids[i]!.id, thick: Math.round(cw.t / 10) / 100 });
+      }
   }
   // T-junctions: an end landing on another wall's middle splits that wall there, so rooms close.
   for (const n of [...plan.nodes]) {
@@ -695,12 +703,15 @@ export function detectWalls(d: Drawing, region: Region): DetectResult {
       }
     }
   }
-  closeDangles(plan);
+  closeDangles(plan, 1.0, curved);
   // Small clusters of walls apart from the building, with no door or window, are notes and symbols read as walls
   // (a legend box, a north arrow, a furniture block): keep only clusters of some size or joined to the main one.
   dropStrayClusters(plan);
   // Kitchen units, counters and table edges drawn with a lighter pen than the walls, read as walls (D4).
   dropLightPenWalls(plan, H, V, penLen, wallPen, ox, oy);
+  // A sofa or a counter along a wall, drawn in the wall pen, pairs with that wall's face into a "wall" lying flat
+  // against it: no house has two walls that close.
+  dropHuggingWalls(plan);
   // Short walls touching nothing are leftovers (dimension ticks, labels): drop them.
   const degree = new Map<string, number>();
   for (const w of plan.walls) for (const id of [w.a, w.b]) degree.set(id, (degree.get(id) ?? 0) + 1);
@@ -800,6 +811,7 @@ interface Chord {
   y1: number;
   x2: number;
   y2: number;
+  pen?: number;
 }
 type Pt = [number, number];
 
@@ -826,15 +838,20 @@ function nearestOn(p: Pt, line: Pt[]): { d: number; q: Pt } {
  */
 export function curvedWalls(chords: Chord[]): { pts: Pt[]; t: number }[] {
   const chains: Pt[][] = [];
+  /** The pen each curve is drawn with (its first piece's). */
+  const penOf = new Map<Pt[], number | undefined>();
   for (const c of chords) {
     const last = chains[chains.length - 1];
     const end = last?.[last.length - 1];
-    if (end && Math.hypot(end[0] - c.x1, end[1] - c.y1) < 10) last!.push([c.x2, c.y2]);
-    else
-      chains.push([
+    if (end && Math.hypot(end[0] - c.x1, end[1] - c.y1) < 10 && penOf.get(last!) === c.pen) last!.push([c.x2, c.y2]);
+    else {
+      const chain: Pt[] = [
         [c.x1, c.y1],
         [c.x2, c.y2],
-      ]);
+      ];
+      chains.push(chain);
+      penOf.set(chain, c.pen);
+    }
   }
   // Curves drawn as several pieces (a bend, then a long sweep) join end to end, in either direction.
   const near = (p: Pt, q: Pt) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 10;
@@ -842,7 +859,7 @@ export function curvedWalls(chords: Chord[]): { pts: Pt[]; t: number }[] {
     joined = false;
     for (const a of chains)
       for (const b of chains) {
-        if (a === b) continue;
+        if (a === b || penOf.get(a) !== penOf.get(b)) continue;
         const [a0, a1, b0, b1] = [a[0]!, a[a.length - 1]!, b[0]!, b[b.length - 1]!];
         let tail: Pt[] | null = null;
         if (near(a1, b0)) tail = b.slice(1);
@@ -864,7 +881,7 @@ export function curvedWalls(chords: Chord[]): { pts: Pt[]; t: number }[] {
   const length = (l: Pt[]) => l.slice(1).reduce((t, p, i) => t + Math.hypot(p[0] - l[i]![0], p[1] - l[i]![1]), 0);
   const curves = chains.filter((l) => length(l) >= 500);
   const used = new Set<Pt[]>();
-  const cand: { a: Pt[]; b: Pt[]; t: number; mid: Pt[] }[] = [];
+  const cand: { a: Pt[]; b: Pt[]; t: number; mid: Pt[]; same: boolean }[] = [];
   for (const a of curves)
     for (const b of curves) {
       if (a === b || length(a) > length(b)) continue;
@@ -880,9 +897,11 @@ export function curvedWalls(chords: Chord[]): { pts: Pt[]; t: number }[] {
           ds[i]!.d >= 60 && ds[i]!.d <= 350 ? [(p[0] + ds[i]!.q[0]) / 2, (p[1] + ds[i]!.q[1]) / 2] : null,
         )
         .filter((p): p is Pt => !!p);
-      cand.push({ a, b, t, mid });
+      cand.push({ a, b, t, mid, same: penOf.get(a) === penOf.get(b) });
     }
-  cand.sort((p, q) => p.t - q.t);
+  // Both faces of a wall are drawn with one pen: such pairs first (a curved sliding door's track runs along the wall's
+  // face in a finer pen, and would otherwise pair with it), then the closest.
+  cand.sort((p, q) => Number(q.same) - Number(p.same) || p.t - q.t);
   const out: { pts: Pt[]; t: number }[] = [];
   for (const c of cand) {
     if (used.has(c.a) || used.has(c.b) || c.mid.length < 2) continue;
@@ -998,7 +1017,7 @@ function withoutAnnotation(d: Drawing): Segment[] {
  * cut short by a cupboard, a column or a frame — still closes its room. Short stubs left touching nothing at one end
  * (frame and sill pieces read as walls) are then dropped. Works on the plan, in metres.
  */
-function closeDangles(plan: Plan, reach = 1.0) {
+function closeDangles(plan: Plan, reach = 1.0, curved: Set<string> = new Set()) {
   const node = (id: string) => plan.nodes.find((n) => n.id === id)!;
   const degree = () => {
     const d = new Map<string, number>();
@@ -1011,7 +1030,12 @@ function closeDangles(plan: Plan, reach = 1.0) {
       const a = node(w.a);
       const b = node(w.b);
       const free = deg.get(w.a) === 1 || deg.get(w.b) === 1;
-      return !(free && Math.hypot(b.x - a.x, b.z - a.z) < 0.45 && !plan.openings.some((o) => o.wall === w.id));
+      return !(
+        free &&
+        !curved.has(w.id) &&
+        Math.hypot(b.x - a.x, b.z - a.z) < 0.45 &&
+        !plan.openings.some((o) => o.wall === w.id)
+      );
     });
   };
   // Stubs first (under 45 cm, free at one end, no opening: frame and sill pieces read as walls), so a wall they hang
@@ -1270,4 +1294,97 @@ function dropLightPenWalls(
   }
   plan.walls = plan.walls.filter((w) => !drop.has(w.id));
   plan.openings = plan.openings.filter((o) => !drop.has(o.wall));
+}
+
+/**
+ * Drops walls lying against a longer parallel wall (less than 0.2 m between their faces over most of their length):
+ * furniture along a wall (a sofa, a counter) whose lines paired with the wall's face. Then the short stubs that held
+ * them (their ends in the room now free) go too.
+ */
+function dropHuggingWalls(plan: Plan) {
+  const nodes = new Map(plan.nodes.map((n) => [n.id, n]));
+  type Ax = { w: Wall; horiz: boolean; c: number; a: number; b: number };
+  const axis = (w: Wall): Ax | null => {
+    const p = nodes.get(w.a)!;
+    const q = nodes.get(w.b)!;
+    if (Math.abs(p.z - q.z) < 0.01) return { w, horiz: true, c: p.z, a: Math.min(p.x, q.x), b: Math.max(p.x, q.x) };
+    if (Math.abs(p.x - q.x) < 0.01) return { w, horiz: false, c: p.x, a: Math.min(p.z, q.z), b: Math.max(p.z, q.z) };
+    return null;
+  };
+  /** Length of the straight run a wall is part of (collinear walls joined end to end). */
+  const runOf = (x: Ax, all: Ax[]) => {
+    let [a, b] = [x.a, x.b];
+    for (let grown = true; grown;) {
+      grown = false;
+      for (const y of all)
+        if (y.horiz === x.horiz && Math.abs(y.c - x.c) < 0.02 && y.b >= a - 0.02 && y.a <= b + 0.02) {
+          if (y.a < a - 1e-6 || y.b > b + 1e-6) {
+            a = Math.min(a, y.a);
+            b = Math.max(b, y.b);
+            grown = true;
+          }
+        }
+    }
+    return b - a;
+  };
+  const dropped = new Set<string>();
+  for (let changed = true; changed;) {
+    changed = false;
+    const all = plan.walls
+      .filter((w) => !dropped.has(w.id))
+      .map(axis)
+      .filter((x): x is Ax => !!x);
+    for (const x of all) {
+      if (x.b - x.a < 0.5) continue;
+      const mine = runOf(x, all);
+      const hugged = all.some((y) => {
+        if (y === x || y.horiz !== x.horiz) return false;
+        const gap = Math.abs(y.c - x.c) - ((x.w.thick ?? 0.15) + (y.w.thick ?? 0.15)) / 2;
+        if (gap > 0.2 || Math.abs(y.c - x.c) < 0.02) return false;
+        const overlap = Math.min(x.b, y.b) - Math.max(x.a, y.a);
+        return overlap >= (x.b - x.a) * 0.7 && runOf(y, all) > mine + 0.3;
+      });
+      if (hugged) {
+        dropped.add(x.w.id);
+        changed = true;
+        break;
+      }
+    }
+  }
+  if (!dropped.size) return;
+  const freed = new Set(plan.walls.filter((w) => dropped.has(w.id)).flatMap((w) => [w.a, w.b]));
+  plan.walls = plan.walls.filter((w) => !dropped.has(w.id));
+  // Stubs left hanging where the furniture was: short walls with a free end that lost their neighbour.
+  for (let changed = true; changed;) {
+    changed = false;
+    const degree = new Map<string, number>();
+    for (const w of plan.walls) for (const id of [w.a, w.b]) degree.set(id, (degree.get(id) ?? 0) + 1);
+    for (const w of plan.walls) {
+      const p = nodes.get(w.a)!;
+      const q = nodes.get(w.b)!;
+      const free = [w.a, w.b].filter((id) => degree.get(id) === 1);
+      if (!free.length || !free.some((id) => freed.has(id)) || Math.hypot(q.x - p.x, q.z - p.z) > 0.5) continue;
+      plan.walls = plan.walls.filter((x) => x !== w);
+      for (const id of [w.a, w.b]) freed.add(id);
+      changed = true;
+      break;
+    }
+  }
+  // Where the furniture met a wall, that wall was split: join its two pieces again (when straight, alike and plain).
+  for (const id of freed) {
+    const two = plan.walls.filter((w) => w.a === id || w.b === id);
+    if (two.length !== 2) continue;
+    const [u, v] = two as [Wall, Wall];
+    if (u.thick !== v.thick || plan.openings.some((o) => o.wall === u.id || o.wall === v.id)) continue;
+    const p = nodes.get(u.a === id ? u.b : u.a)!;
+    const q = nodes.get(v.a === id ? v.b : v.a)!;
+    const m = nodes.get(id)!;
+    const cross = (m.x - p.x) * (q.z - p.z) - (m.z - p.z) * (q.x - p.x);
+    if (Math.abs(cross) / (Math.hypot(q.x - p.x, q.z - p.z) || 1) > 0.01) continue;
+    plan.walls = plan.walls.filter((w) => w !== v);
+    if (u.a === id) u.a = q.id;
+    else u.b = q.id;
+  }
+  const ids = new Set(plan.walls.map((w) => w.id));
+  plan.openings = plan.openings.filter((o) => ids.has(o.wall));
 }
